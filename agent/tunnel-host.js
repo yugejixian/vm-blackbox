@@ -1,0 +1,262 @@
+// Host side of the reverse channel: accepts the guest's outbound connection,
+// forwards HTTP calls from local tooling, and saves screenshots to disk.
+//
+// Screenshot path: the guest agent's GDI capture cannot see GPU-composited (3D) windows,
+// so /shot first tries the guest and falls back to the VirtualBox framebuffer capture,
+// which is then decorated with the same coordinate ruler by RulerOverlay.exe.
+const net = require('net');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+const TCP_PORT = 8801;
+const HTTP_PORT = 8890;
+const SHOTS = 'D:\\null_work\\shots';
+
+const VBOX = 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
+const VM = 'qa-win11-zh';
+const OVERLAY = 'D:\\null_work\\agent\\RulerOverlay.exe';
+
+let sock = null;
+let buffer = Buffer.alloc(0);
+let nextId = 1;
+let lastClick = null; // {x, y} of the most recent click, drawn as a crosshair
+const pending = new Map();
+
+function log(m) { console.log(new Date().toISOString().slice(11, 19), m); }
+
+function processBuffer() {
+  for (;;) {
+    const idx = buffer.indexOf(10);
+    if (idx < 0) return;
+    const line = buffer.slice(0, idx).toString('utf8').replace(/\r$/, '');
+    const m = line.match(/^(\d+) (OK|ERR) ?(.*)$/);
+    if (!m) { buffer = buffer.slice(idx + 1); continue; }
+    const id = Number(m[1]);
+    const kind = m[2];
+    const rest = m[3];
+    const p = pending.get(id);
+    if (kind === 'ERR') {
+      buffer = buffer.slice(idx + 1);
+      pending.delete(id);
+      if (p) p.reject(new Error(rest));
+      continue;
+    }
+    if (p && p.op === 'SHOT') {
+      const len = parseInt(rest, 10);
+      if (!Number.isFinite(len)) { buffer = buffer.slice(idx + 1); pending.delete(id); if (p) p.reject(new Error('bad len')); continue; }
+      if (buffer.length < idx + 1 + len) return;
+      const payload = buffer.slice(idx + 1, idx + 1 + len);
+      buffer = buffer.slice(idx + 1 + len);
+      pending.delete(id);
+      p.resolve(payload);
+      continue;
+    }
+    buffer = buffer.slice(idx + 1);
+    pending.delete(id);
+    if (p) p.resolve(rest);
+  }
+}
+
+function call(op, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!sock) return reject(new Error('no guest connection'));
+    const id = nextId++;
+    pending.set(id, { op, resolve, reject });
+    sock.write([id, op].concat(args || []).join(' ') + '\n');
+    setTimeout(() => {
+      if (pending.has(id)) { pending.delete(id); reject(new Error('timeout:' + op)); }
+    }, timeoutMs || 20000);
+  });
+}
+
+function run(cmd, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const p = spawn(cmd, args, { windowsHide: true });
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      try { p.kill(); } catch (e) { }
+      reject(new Error('timeout:' + path.basename(cmd)));
+    }, timeoutMs);
+    p.on('error', (e) => { if (!done) { done = true; clearTimeout(t); reject(e); } });
+    p.on('exit', (code) => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      if (code === 0) resolve(); else reject(new Error(path.basename(cmd) + ' exit ' + code));
+    });
+  });
+}
+
+let shotSeq = 0;
+async function hostShot(quality, persist) {
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const stamp = Date.now() + '-' + (shotSeq++);
+  const raw = path.join(SHOTS, 'raw-' + stamp + '.png');
+  const out = path.join(SHOTS, 'shot-' + stamp + '.jpg');
+  await run(VBOX, ['controlvm', VM, 'screenshotpng', raw], 15000);
+  const cx = lastClick ? lastClick.x : -1;
+  const cy = lastClick ? lastClick.y : -1;
+  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality)], 15000);
+  const buf = fs.readFileSync(out);
+  try { fs.unlinkSync(raw); } catch (e) { }
+  if (!persist) { try { fs.unlinkSync(out); } catch (e) { } return { buf, file: null }; }
+  return { buf, file: out };
+}
+
+net.createServer((s) => {
+  sock = s;
+  buffer = Buffer.alloc(0);
+  s.setNoDelay(true);
+  s.on('data', (d) => { buffer = Buffer.concat([buffer, d]); processBuffer(); });
+  s.on('close', () => {
+    log('guest disconnected');
+    sock = null;
+    for (const [, p] of pending) p.reject(new Error('guest disconnected'));
+    pending.clear();
+  });
+  log('guest connected from ' + s.remoteAddress);
+}).listen(TCP_PORT, '0.0.0.0', () => log('tcp listening ' + TCP_PORT));
+
+http.createServer(async (req, res) => {
+  const u = new URL(req.url, 'http://x');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+  try {
+    switch (u.pathname) {
+      case '/status':
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ connected: !!sock, pending: pending.size }));
+        return;
+      case '/info': {
+        const r = await call('INFO', []);
+        res.setHeader('Content-Type', 'application/json');
+        res.end(r);
+        return;
+      }
+      case '/viewer': {
+        const html = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<title>虚拟机实时画面</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#ddd;font:13px/1.4 system-ui,"Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#1b1b1b;border-bottom:1px solid #333}
+  #dot{width:9px;height:9px;border-radius:5px;background:#c0392b}
+  #wrap{position:absolute;top:41px;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  #view{max-width:100%;max-height:100%;image-rendering:auto;background:#000}
+  a{color:#7cb7ff}
+  .mono{font-family:Consolas,monospace;opacity:.7}
+</style></head><body>
+<header>
+  <span id="dot"></span><b>虚拟机实时画面</b>
+  <span class="mono" id="st">连接中…</span>
+  <span style="flex:1"></span>
+  <span class="mono" id="ts"></span>
+  <a href="/live" target="_blank">原始流</a>
+</header>
+<div id="wrap"><img id="view" src="/live" alt="vm"></div>
+<script>
+  const dot = document.getElementById('dot');
+  const st = document.getElementById('st');
+  const ts = document.getElementById('ts');
+  const img = document.getElementById('view');
+  async function tick(){
+    try{
+      const r = await fetch('/status',{cache:'no-store'});
+      const j = await r.json();
+      dot.style.background = j.connected ? '#2ecc71' : '#d8a12a';
+      st.textContent = j.connected ? '访客已连接' : '访客离线';
+    }catch(e){ dot.style.background='#c0392b'; st.textContent='隧道不可用'; }
+    ts.textContent = new Date().toLocaleTimeString();
+  }
+  tick(); setInterval(tick, 2000);
+  img.onerror = () => { setTimeout(() => { img.src = '/live?t=' + Date.now(); }, 1500); };
+</script></body></html>`;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(html);
+        return;
+      }
+      case '/live': {
+        // MJPEG live view: keep sending fresh frames until the client disconnects.
+        res.writeHead(200, {
+          'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          Connection: 'close',
+        });
+        let closed = false;
+        req.on('close', () => { closed = true; });
+        (async () => {
+          while (!closed) {
+            try {
+              const r = await hostShot(55, false);
+              if (closed) break;
+              res.write('--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + r.buf.length + '\r\n\r\n');
+              res.write(r.buf);
+              res.write('\r\n');
+            } catch (e) {
+              if (closed) break;
+              await new Promise((r2) => setTimeout(r2, 1000));
+            }
+            await new Promise((r2) => setTimeout(r2, 600));
+          }
+          try { res.end(); } catch (e) { }
+        })();
+        return;
+      }
+      case '/shot': {
+        const q = parseInt(u.searchParams.get('q') || '80', 10);
+        const src = u.searchParams.get('src');
+        let buf = null, file = null, via = 'guest';
+        if (src !== 'host') {
+          try { buf = await call('SHOT', [String(q)], 6000); } catch (e) { buf = null; }
+        }
+        if (!buf) {
+          via = 'host';
+          const r = await hostShot(q, false);
+          buf = r.buf;
+          file = r.file;
+          log('guest capture failed, used host framebuffer');
+        }
+        if (!file && u.searchParams.get('nosave') !== '1') {
+          fs.mkdirSync(SHOTS, { recursive: true });
+          file = path.join(SHOTS, 'shot-' + Date.now() + '.jpg');
+          fs.writeFileSync(file, buf);
+        }
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('X-Shot-Path', file);
+        res.setHeader('X-Shot-Bytes', String(buf.length));
+        res.setHeader('X-Shot-Via', via);
+        res.end(buf);
+        return;
+      }
+      case '/click': {
+        const x = parseInt(u.searchParams.get('x'), 10);
+        const y = parseInt(u.searchParams.get('y'), 10);
+        await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
+        if (Number.isFinite(x) && Number.isFinite(y)) lastClick = { x, y };
+        res.end('{"ok":true}');
+        return;
+      }
+      case '/type': {
+        const t = Buffer.from(u.searchParams.get('text') || '', 'utf8').toString('base64');
+        await call('TYPE', [t]);
+        res.end('{"ok":true}');
+        return;
+      }
+      case '/key':
+        await call('KEY', [u.searchParams.get('combo') || '']);
+        res.end('{"ok":true}');
+        return;
+      default:
+        res.statusCode = 404;
+        res.end('no route');
+    }
+  } catch (e) {
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: String(e.message) }));
+  }
+}).listen(HTTP_PORT, '127.0.0.1', () => log('http listening ' + HTTP_PORT));

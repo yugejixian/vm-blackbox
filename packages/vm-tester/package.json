@@ -1,0 +1,32 @@
+{
+  "name": "dsh-vm-tester",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Black-box GUI testing for DeepSeek Harness: the agent sees only screenshots and drives only mouse/keyboard inside a VirtualBox guest.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "testing",
+    "black-box",
+    "virtualbox",
+    "gui-automation"
+  ]
+}

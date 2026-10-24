@@ -1,0 +1,152 @@
+# 虚拟机黑盒测试台 — 交接说明（中文镜像版）
+
+## 现状（2026-10-24 下午）
+
+- 虚拟机 **`qa-win11-zh`**：Windows 11 专业版 **中文** 26300.9457，1920×1080，用户 `qa`，自动登录。
+- 基线快照 **`zh-cn-clean`**：关机状态、光驱已摘、干净桌面、**记事本会话已清空**（打开就是空白 `Untitled` / `0 characters`）、桌面已放好 `Everything-Setup.exe` 安装包（用例 003 用）。
+- **访客代理 `C:\qa\QaTunnel.exe` 以「计划任务 + 最高权限 + 交互式」运行** → 反向连宿主 `127.0.0.1:8801`；宿主 `tunnel-host.js` 摊成 HTTP `127.0.0.1:8890`。
+  - 任务命令：`schtasks /Create /TN "QaTunnel" /TR "C:\qa\QaTunnel.exe" /SC ONLOGON /RL HIGHEST /IT /F /RU qa /RP Passw0rd!`
+  - **必须有 `/IT`**：少了它任务会跑进非交互会话，代理能连上但看不见桌面（`/shot` 报「句柄无效」），输入也打不到任何窗口。
+  - 代理跑在高完整性，才能驱动提权后的窗口（UIPI 只拦低→高）。已实测：提权 `cmd.exe` 能收到隧道输入，`whoami /groups` 回显 `High Mandatory Level`。
+- 截图自带**坐标标尺**（见下文），`vm_screenshot` 返回的图带红线和原生坐标数字。
+- 插件 `@local/vm-tester`：`vm_status` `vm_screenshot` `vm_click` `vm_type` `vm_key` `vm_key_basic` `vm_wait`。
+- 预设：`vm-naive`（`vm_screenshot` `vm_click` `vm_type` `vm_key_basic` `vm_wait`）、`vm-smart`（含 `vm_key`）。
+- 旧的 en-US 虚拟机 `qa-win11` 已删除（释放磁盘）。
+
+**实测时序**：关机+回滚 0.3 秒、启动 3.6 秒、隧道就绪约 36 秒（合计约 47 秒/轮）。
+
+## 投递被测文件（ops 动作，不是测试员做的）
+
+`guestcontrol` 在这台机上可用，直接把文件拷到访客桌面：
+
+```
+& 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' guestcontrol qa-win11-zh copyto `
+  --username qa --password 'Passw0rd!' `
+  'D:\null_work\installers\Everything-1.4.1.1026.x64-Setup.exe' `
+  'C:\Users\qa\Desktop\Everything-Setup.exe'
+```
+
+注意：目标参数要写到**文件名**，只给目录会报 “Destination … is a directory”。
+
+**中文渲染已验证**：在记事本里用 `vm_type` 键入「中文输入复验：你好，虚拟机测试员」，编辑区正确显示，`Ln 1, Col 17 / 16 characters / UTF-8`。之前 en-US 镜像上「键入中文变方框」的问题在中文镜像上不存在，不需要任何 FontLink 补丁。
+
+## 每轮开测前
+
+```
+# 1) 关机并回滚基线
+& 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' controlvm qa-win11-zh poweroff
+& 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' snapshot qa-win11-zh restore zh-cn-clean
+& 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' startvm qa-win11-zh --type headless
+
+# 2) 确认隧道进程在跑（不在就拉起）
+Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\tunnel-host.js' -WindowStyle Hidden
+
+# 3) 等 60–90 秒，vm_status 应为 connected:true
+```
+
+## 环境约定：提权不弹窗
+
+测试机的 UAC **不弹窗、管理员进程静默提权**：
+
+| 注册表项 | 值 | 说明 |
+|---|---|---|
+| `ConsentPromptBehaviorAdmin` | `0` | 管理员提权不询问 |
+| `PromptOnSecureDesktop` | `0` | 不用安全桌面 |
+| `EnableLUA` | `1` | UAC 本身仍启用 |
+
+**为什么**：测试员跑在普通用户会话里，合成输入进不了安全桌面，任何需要提权的安装向导都会卡在 UAC 那一步。实测 Everything 安装包会在「安装」时弹 UAC，测试员完全点不动。
+
+**代价**：UAC 交互本身不在自动化覆盖范围内；真实用户会看到「你要允许此应用…」这一屏。这是明确的取舍，不是遗漏。
+
+**⚠️ 关键补充（005 踩过）**：静默提权只消除了**询问框**，没有消除**完整性边界**。进程照样提权成高完整性窗口，UIPI 照样把低完整性的合成输入整条丢弃——而且因为没有任何提示，现象看起来像「界面死了」。005 就撞在这上面：卸载器提权后输入全丢，连点其他窗口也没反应，最后靠宿主物理键盘才关掉。
+
+**真正的解法是让代理本身高完整性运行**（见上文计划任务 `/RL HIGHEST /IT`）：高完整性进程的 SendInput 可以进高完整性窗口，这是 UIPI 允许的方向。改完之后提权向导可被正常驱动。
+
+改动方法（已固化进 `zh-cn-clean`）：把一个 .bat 拷进访客，用 `powershell -c Start-Process C:\qa\uac-off.bat -Verb RunAs` 提权运行，宿主用物理键盘 `Tab` 到「是」再 `Space` 确认一次即可。
+
+## 围观：三种看法，都不碰 DSH 配置
+
+| 方式 | 命令 / 地址 | 特点 |
+|---|---|---|
+| **桌面看板**（推荐） | 双击 `D:\null_work\vm-plugin\VmWatch.exe` | 独立小窗、默认置顶、可缩放；状态栏显示 `guest=up · 实时 · 1.1 帧/秒`；`Esc` 关、`T` 切置顶、`空格` 暂停 |
+| 浏览器整页 | `http://127.0.0.1:8890/viewer` | 全窗口、带时间戳、约 1 帧/秒 |
+| 原始流 | `http://127.0.0.1:8890/live` | MJPEG，可嵌进任何页面 |
+
+- 三者都读宿主隧道，**不装插件、不改 DSH 配置**，所以不会重演 `vm-live` 那次事故。
+- 看板用 `/shot?...&nosave=1`，**不落盘**（否则一天会写几万个 jpg）。
+- 帧率上限约 1.1 帧/秒：每帧要起一次抓屏，够看清操作，不要指望视频级流畅。
+- 隧道断开时看板保留最后一帧，状态栏变橙红并显示 `tunnel=down` / `guest=down`。
+
+## 接管：随时切到带窗口模式
+
+```powershell
+& 'D:\null_work\vm-plugin\vm-ui.ps1' -Mode status     # 看状态（窗口/隧道）
+& 'D:\null_work\vm-plugin\vm-ui.ps1' -Mode show       # 带窗口启动：可以直接用鼠标键盘操作虚拟机
+& 'D:\null_work\vm-plugin\vm-ui.ps1' -Mode headless   # 无窗口启动：交给自动测试
+```
+
+- 两种模式下隧道和 `vm_*` 工具都可用，区别只是有没有一个你能看见、能点的窗口。
+- 切换会先 `poweroff` 再按目标模式启动，访客未保存状态会丢；需要干净基线先 `snapshot restore`。
+- 实测：`show` 与 `headless` 双向切换，从关机到隧道就绪各约 **24 秒**。
+- **同时操作会打架**：你在窗口里点的时候，自动测试的合成点击也会生效。
+- 脚本必须存成 **UTF-8 with BOM**，否则 PowerShell 5.1 按 ANSI 解码，中文会让引号错位、整份脚本语法失败（`build-vm.ps1` 同样处理过）。
+
+## 坐标标尺（截图自带坐标系）
+
+`vm_screenshot` 返回的图上有**红色标尺**：每 200 像素一条细线，顶部/底部/左右边缘标着数字，**数字就是屏幕真实像素坐标**。
+
+- 测试员点按钮时，直接读标尺数字给 `vm_click`，不需要任何换算。
+- **青色十字 + `click x,y` 标签是上一次点击的落点**。点完再截一张图：如果十字没落在目标上，就是坐标读错了——重新读标尺，不要自己乘系数。
+- 标尺是工具画的，不是界面的一部分；提示词里必须写明这一点，否则测试员会把它当成 UI 元素。
+- 1000 的倍数那条线更粗，方便快速定位。
+- 需要无标尺的干净图时，隧道支持 `SHOT <q> plain`（目前插件没暴露这个开关）。
+
+**为什么要有它**：模型看到的截图会被图像管线缩放到 1708×961（1920×1080 的 0.8896 倍），但 `vm_click` 收的是原生坐标。测试员照缩小图读数、原样传进去，落点就会偏上偏左约 11%——前几轮「按钮点不动」全是这个原因，不是权限、也不是产品缺陷。
+
+**但坐标问题的另一半在用例侧**：UI 会因内容变化而重排。Windows 计算器显示表达式行（`12 + 7 =`）时显示区变高，整个按钮网格**下移约 54px**，清空后又缩回。拿重排前的截图坐标去点重排后的界面，就会点到相邻按钮（实测把「C」点成「√x」两次）。
+
+**输入映射本身是精确的**：`agent\Calibrate.exe` 全屏标定 9 个已知点，落点与请求**逐点相同（9/9，0px 误差）**。所以坐标问题的两个真实来源只有：
+1. 用了预览图坐标没换算（×1.1241）；
+2. 界面重排后复用旧坐标。
+
+**规矩**：每次点击前重新截图；坐标只用「当前这张图」上的标尺数字。
+
+## 跑用例的铁律（防假阳性）
+
+1. 用例前置必须验证：目标文档是**空白新文档**（`Untitled` / `Ln 1 Col 1` / `0 characters`）。会话恢复出来的旧内容不能当通过证据；遇到脏基线就新建空白标签并说明。
+2. **子代理返回之前不读日志、源码或任何后台数据。**
+3. 返回后先用 `read_image` 逐张核对它引用的截图。
+4. **再调子会话的工具调用日志做全量核对**：把它的实际动作序列和报告里写的步骤对一遍，找出报告没写的动作（误点、多余窗口、未声明的副作用）。报告是摘要，日志才是事实。
+5. 核对完成后才允许做后台诊断。
+6. 报告写 `D:\null_work\runs\<run-id>\report.md`。
+7. **收尾前跑一次体检**：`& 'D:\null_work\vm-plugin\check-run.ps1' -All`
+   - 硬性：报告存在、有明确结论（PASS/FAIL/被阻断）、**每个引用的截图都在磁盘上**
+   - 软性：缺「步骤/可疑项/取证」措辞、磁盘上有没被引用的孤儿图
+   - 实测价值：第一次跑就在 `case002b` 里抓到一张引用了但不存在的截图——那张收尾图其实在全局 `D:\null_work\shots\` 里，没归档进运行目录。收尾截图也要落进 `runs\<run-id>\shots\`。
+8. 给测试员的 prompt 里明确要求：**每步截图后立刻把路径写进记录**，不要事后凭记忆引用（上一轮出现过路径复用、步骤缺独立截图）。
+
+## 用例套件（`D:\null_work\cases\`）
+
+| 用例 | 场景 | 文件 | 备注 |
+|---|---|---|---|
+| 001 | 主流程（记事本中文输入） | `case-001-notepad.md` | 已 PASS |
+| 002 | 主流程（计算器 12+7=19，清空归零） | `case-002-calculator.md` | 纯点击，适合白痴挡位 |
+| 003 | 安装（Everything 安装向导） | `case-003-install.md` | 桌面已有安装包 |
+| 004 | 异常（安装向导中途取消） | `case-004-cancel.md` | 依赖 003 已装 |
+| 005 | 卸载（设置 → 应用 → 卸载） | `case-005-uninstall.md` | 依赖 003 已装 |
+
+003→004→005 是串行的：装完再取消再卸载。跑 003 时用的快照是干净的，004/005 需要在同一轮里接着跑（或者跑完 003 后**不要回滚**）。
+
+## 踩过的坑（都在这里了）
+
+- **安装完必须摘 ISO、`boot1=disk`，并正常关机**（`shutdown /s /f`）。否则一重启就又从光盘进安装程序；硬断电还会留下未完成的安装，重启后续装，把已装好的系统覆盖掉。
+- **不要在等待启动时连按 Enter**：按键会被 Windows 消息队列缓冲，程序窗口一创建就连续消费，直接把开场/菜单"点掉"（006 实测：开场画面和主菜单一张没拍到）。正确做法是**等窗口出现后再按键**，等待期间只截图。
+- **合成双击对桌面 `.exe`/`.lnk` 不触发启动**（对文件夹、回收站有效）。实测：双击安装包等 17 秒无反应，前后两张截图逐字节相同；换位置再试仍无效。
+  **标准动作：打开项目一律「单击选中 + Enter」。** 这条已写进测试员提示词，用例里写「双击」时按等价动作执行并在报告里注明。
+- **设置应用里的「…」弹出按钮点不动**（005 实测连点 3 次无效），要 `Tab` 凑到再按 `Enter` 才生效；但**安装/卸载向导里的按钮直接点就行**。别一刀切说「按钮都点不动」。
+- **隧道的 SendInput 进不了高完整性窗口**（UAC、管理员 CMD）——那些场景要用 `VBoxManage controlvm keyboardputstring / keyboardputscancode` 的物理键盘。
+- **物理键盘打不出双引号**；带空格的路径改用 PowerShell 单引号写法。
+- **`C:\` 根目录只能建目录、不能建文件**；临时脚本放 `%TEMP%`。
+- **宿主 Defender 的 AMSI 会拦 `iex(iwr …)` 模式**；改成先 `curl -o` 落盘，再 `powershell -File` 执行。
+- 宿主文件服务 `0.0.0.0:8800`（`python -m http.server`，目录 `D:\null_work\agent`）只在装/更新代理时需要，平时可以关。
+- 提权配方：`win+r` → `powershell -c "Start-Process cmd -Verb RunAs"` → 物理键盘 `Tab Tab 空格`（焦点顺序 No → Show more details → Yes）。

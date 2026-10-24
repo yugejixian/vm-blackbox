@@ -1,0 +1,19 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 运行产物（报告与截图属于具体机器，不入库）
+runs/
+shots/
+*.log
+
+# 临时
+tmp/
+*.tmp
+*.bak-*
+~$*
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini

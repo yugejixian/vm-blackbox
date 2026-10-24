@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "VM Tester",
+    "description": "Drive a running Windows virtual machine with real screen pixels and real mouse/keyboard input: screenshot, click, type, key, wait."
+  }
+}
