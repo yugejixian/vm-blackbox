@@ -28,5 +28,14 @@
     "black-box",
     "virtualbox",
     "gui-automation"
-  ]
+  ],
+  "main": "./index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yugejixian/vm-blackbox.git"
+  },
+  "homepage": "https://github.com/yugejixian/vm-blackbox#readme",
+  "bugs": {
+    "url": "https://github.com/yugejixian/vm-blackbox/issues"
+  }
 }
