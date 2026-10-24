@@ -58,7 +58,10 @@ AI 跑自动化测试时最容易出的问题不是点不对，而是**它可以
 ## 安装
 
 ```bash
-# 标准方式（Harness 的插件管理器）
+# 方式一：从 GitHub Release 的打包产物安装（不需要 npm 发布）
+dsh plugin add https://github.com/yugejixian/vm-blackbox/releases/download/v0.1.0/dsh-vm-tester-0.1.0.tgz
+
+# 方式二：从本地源码目录安装
 dsh plugin add /path/to/vm-tester
 ```
 

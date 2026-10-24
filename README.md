@@ -39,7 +39,11 @@ DSH 测试员 ──工具调用──▶ vm-tester 插件 ──HTTP :8890─�
 1. 装 VirtualBox 7.x，准备一个 Windows 11 中文 ISO；
 2. 跑 `scripts/build-vm.ps1 -Iso <你的 iso>`——建虚拟机、无人值守装系统、装 Guest Additions（含 3D）、部署代理、打基线快照；
 3. 宿主启动 `agent/tunnel-host.js`（Node）；
-4. 把 `packages/vm-tester` 装进 DSH profile；
+4. 把插件装进 DSH profile（二选一）：
+   ```sh
+   dsh plugin add https://github.com/yugejixian/vm-blackbox/releases/download/v0.1.0/dsh-vm-tester-0.1.0.tgz
+   dsh plugin add ./packages/vm-tester
+   ```
 5. 需要看画面：双击 `scripts/VmWatch.exe`，或开 `http://127.0.0.1:8890/viewer`；
 6. 需要亲自操作：`scripts/vm-ui.ps1 -Mode show`。
 
