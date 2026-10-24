@@ -49,6 +49,8 @@ DSH 测试员 ──工具调用──▶ vm-tester 插件 ──HTTP :8890─�
 
 八条示例用例在中文 Windows 11 上全部 PASS（含一条商业 Unity 游戏）。已知限制、帧率、坐标行为都写在 `docs/handoff.md` 的「踩过的坑」里。
 
-## 许可
+## 许可与免责
 
-MIT
+MIT，见 [`LICENSE`](LICENSE)。
+
+**使用前请阅读 [`DISCLAIMER.md`](DISCLAIMER.md)**：软件许可、EULA、隐私与合规责任由使用者自行承担。

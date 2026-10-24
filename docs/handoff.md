@@ -5,7 +5,7 @@
 - 虚拟机 **`qa-win11-zh`**：Windows 11 专业版 **中文** 26300.9457，1920×1080，用户 `qa`，自动登录。
 - 基线快照 **`zh-cn-clean`**：关机状态、光驱已摘、干净桌面、**记事本会话已清空**（打开就是空白 `Untitled` / `0 characters`）、桌面已放好 `Everything-Setup.exe` 安装包（用例 003 用）。
 - **访客代理 `C:\qa\QaTunnel.exe` 以「计划任务 + 最高权限 + 交互式」运行** → 反向连宿主 `127.0.0.1:8801`；宿主 `tunnel-host.js` 摊成 HTTP `127.0.0.1:8890`。
-  - 任务命令：`schtasks /Create /TN "QaTunnel" /TR "C:\qa\QaTunnel.exe" /SC ONLOGON /RL HIGHEST /IT /F /RU qa /RP Passw0rd!`
+  - 任务命令：`schtasks /Create /TN "QaTunnel" /TR "C:\qa\QaTunnel.exe" /SC ONLOGON /RL HIGHEST /IT /F /RU qa /RP <访客密码>`
   - **必须有 `/IT`**：少了它任务会跑进非交互会话，代理能连上但看不见桌面（`/shot` 报「句柄无效」），输入也打不到任何窗口。
   - 代理跑在高完整性，才能驱动提权后的窗口（UIPI 只拦低→高）。已实测：提权 `cmd.exe` 能收到隧道输入，`whoami /groups` 回显 `High Mandatory Level`。
 - 截图自带**坐标标尺**（见下文），`vm_screenshot` 返回的图带红线和原生坐标数字。
@@ -21,7 +21,7 @@
 
 ```
 & 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' guestcontrol qa-win11-zh copyto `
-  --username qa --password 'Passw0rd!' `
+  --username qa --password '<访客密码>' `
   'D:\null_work\installers\Everything-1.4.1.1026.x64-Setup.exe' `
   'C:\Users\qa\Desktop\Everything-Setup.exe'
 ```

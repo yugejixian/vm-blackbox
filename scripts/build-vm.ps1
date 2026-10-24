@@ -22,6 +22,7 @@ param(
     [string]$VmName = 'qa-win11-zh',
     [string]$BaseFolder = 'D:\null_work\vms',
     [string]$GuestUser = 'qa',
+    # 演示默认密码：仅用于一次性测试虚拟机。生产环境请显式传 -GuestPassword
     [string]$GuestPassword = 'Passw0rd!',
     [int]$MemoryMB = 4096,
     [int]$Cpus = 2,
