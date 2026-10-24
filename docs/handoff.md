@@ -1,5 +1,7 @@
 # 虚拟机黑盒测试台 — 交接说明（中文镜像版）
 
+> 本文档是作者本机的操作记录。路径里的 `D:\null_work\...` 属于作者环境，请替换成你的仓库路径；脚本在 `scripts/`，插件包在仓库根目录。
+
 ## 现状（2026-10-24 下午）
 
 - 虚拟机 **`qa-win11-zh`**：Windows 11 专业版 **中文** 26300.9457，1920×1080，用户 `qa`，自动登录。
@@ -68,7 +70,7 @@ Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\t
 
 | 方式 | 命令 / 地址 | 特点 |
 |---|---|---|
-| **桌面看板**（推荐） | 双击 `D:\null_work\vm-plugin\VmWatch.exe` | 独立小窗、默认置顶、可缩放；状态栏显示 `guest=up · 实时 · 1.1 帧/秒`；`Esc` 关、`T` 切置顶、`空格` 暂停 |
+| **桌面看板**（推荐） | 双击 `scripts\VmWatch.exe` | 独立小窗、默认置顶、可缩放；状态栏显示 `guest=up · 实时 · 1.1 帧/秒`；`Esc` 关、`T` 切置顶、`空格` 暂停 |
 | 浏览器整页 | `http://127.0.0.1:8890/viewer` | 全窗口、带时间戳、约 1 帧/秒 |
 | 原始流 | `http://127.0.0.1:8890/live` | MJPEG，可嵌进任何页面 |
 
@@ -80,9 +82,9 @@ Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\t
 ## 接管：随时切到带窗口模式
 
 ```powershell
-& 'D:\null_work\vm-plugin\vm-ui.ps1' -Mode status     # 看状态（窗口/隧道）
-& 'D:\null_work\vm-plugin\vm-ui.ps1' -Mode show       # 带窗口启动：可以直接用鼠标键盘操作虚拟机
-& 'D:\null_work\vm-plugin\vm-ui.ps1' -Mode headless   # 无窗口启动：交给自动测试
+& 'scripts\vm-ui.ps1' -Mode status     # 看状态（窗口/隧道）
+& 'scripts\vm-ui.ps1' -Mode show       # 带窗口启动：可以直接用鼠标键盘操作虚拟机
+& 'scripts\vm-ui.ps1' -Mode headless   # 无窗口启动：交给自动测试
 ```
 
 - 两种模式下隧道和 `vm_*` 工具都可用，区别只是有没有一个你能看见、能点的窗口。
@@ -119,7 +121,7 @@ Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\t
 4. **再调子会话的工具调用日志做全量核对**：把它的实际动作序列和报告里写的步骤对一遍，找出报告没写的动作（误点、多余窗口、未声明的副作用）。报告是摘要，日志才是事实。
 5. 核对完成后才允许做后台诊断。
 6. 报告写 `D:\null_work\runs\<run-id>\report.md`。
-7. **收尾前跑一次体检**：`& 'D:\null_work\vm-plugin\check-run.ps1' -All`
+7. **收尾前跑一次体检**：`& 'scripts\check-run.ps1' -All`
    - 硬性：报告存在、有明确结论（PASS/FAIL/被阻断）、**每个引用的截图都在磁盘上**
    - 软性：缺「步骤/可疑项/取证」措辞、磁盘上有没被引用的孤儿图
    - 实测价值：第一次跑就在 `case002b` 里抓到一张引用了但不存在的截图——那张收尾图其实在全局 `D:\null_work\shots\` 里，没归档进运行目录。收尾截图也要落进 `runs\<run-id>\shots\`。

@@ -80,6 +80,6 @@ PowerShell 或 cmd 查看本机情况（例如 Win+R 打开运行框）。
 跑完后：
 1. 报告写到 D:\null_work\runs\<run-id>\report.md，用 D:\null_work\templates\report-template.md 的骨架
 2. 收尾截图也要归档到 runs\<run-id>\shots\
-3. 跑 & 'D:\null_work\vm-plugin\check-run.ps1' -All 体检，硬性项必须全过
+3. 跑 & '<仓库>\scripts\check-run.ps1' -All 体检，硬性项必须全过
 4. 再交回给用户复核
 ```
