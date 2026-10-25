@@ -202,6 +202,20 @@ namespace QaTunnel
 
         // Crosshair at the LAST click position so the model can see where its click actually landed.
 
+        private static Rectangle UiaFocusRect()
+        {
+            try
+            {
+                var el = System.Windows.Automation.AutomationElement.FocusedElement;
+                if (el == null) return Rectangle.Empty;
+                var r = el.Current.BoundingRectangle;
+                if (r.Width >= 8 && r.Height >= 8 && r.Width <= 4096 && r.Height <= 4096)
+                    return new Rectangle((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height);
+            }
+            catch { }
+            return Rectangle.Empty;
+        }
+
         private static Rectangle WindowRect(IntPtr hWnd)
         {
             try
@@ -218,6 +232,10 @@ namespace QaTunnel
 
         private static Rectangle FocusRect()
         {
+            // Chromium / Electron 应用的「焦点窗口」是整个浏览器窗口，直接用 HWND 会把整页遮黑。
+            // 优先用 UI Automation 取真正获得焦点的元素矩形。
+            var uia = UiaFocusRect();
+            if (!uia.IsEmpty) return uia;
             try
             {
                 IntPtr hFocus = FindFocusWindow();

@@ -117,15 +117,15 @@ const sha1 = (b) => crypto.createHash('sha1').update(b).digest('hex');
 function runCapture(cmd, args, timeoutMs) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { windowsHide: true });
-    let out = '', err = '', done = false;
+    const outChunks = []; let err = '', done = false;
     const t = setTimeout(() => { if (done) return; done = true; try { p.kill(); } catch (e) { } reject(new Error('timeout:' + path.basename(cmd))); }, timeoutMs);
-    p.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    p.stdout.on('data', (d) => { outChunks.push(d); });
     p.stderr.on('data', (d) => { err += d.toString('utf8'); });
     p.on('error', (e) => { if (!done) { done = true; clearTimeout(t); reject(e); } });
     p.on('exit', (code) => {
       if (done) return;
       done = true; clearTimeout(t);
-      if (code === 0) resolve(out); else reject(new Error('exit ' + code + ' ' + err.slice(0, 200)));
+      if (code === 0) resolve(Buffer.concat(outChunks).toString('utf8')); else reject(new Error('exit ' + code + ' ' + err.slice(0, 200)));
     });
   });
 }

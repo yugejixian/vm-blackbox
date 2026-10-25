@@ -1,6 +1,7 @@
 ﻿param([Parameter(Mandatory = $true)][string]$Name)
 
 # read a secret to stdout (called by tunnel-host.js only; never logged)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $path = Join-Path $scriptDir 'vault.dat'
 if (-not (Test-Path $path)) { exit 2 }

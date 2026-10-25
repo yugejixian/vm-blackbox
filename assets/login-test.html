@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>QA 安全测试页 - 登录</title>
+<style>
+  body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: #f3f5f8; margin: 0; padding: 28px; color: #222; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .sub { color: #666; font-size: 15px; margin-bottom: 20px; }
+  .card { background: #fff; border: 1px solid #d9dee6; border-radius: 10px; padding: 22px; max-width: 640px; }
+  label { display: block; font-size: 15px; margin: 14px 0 6px; color: #333; }
+  input[type=text], input[type=password] { width: 100%; box-sizing: border-box; font-size: 18px; padding: 10px 12px; border: 1px solid #b9c2cf; border-radius: 6px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+  button { font-size: 17px; padding: 10px 26px; border-radius: 6px; border: 0; background: #1f6feb; color: #fff; cursor: pointer; }
+  button.ghost { background: #eaeef4; color: #333; }
+  .toggle { font-size: 14px; color: #555; margin-top: 10px; }
+  #result { margin-top: 18px; font-size: 17px; font-weight: 700; }
+  .ok { color: #0f7b23; }
+  .bad { color: #b42318; }
+  pre { background: #0f172a; color: #d6e2f5; padding: 14px; border-radius: 8px; font-size: 15px; line-height: 1.5; overflow: auto; }
+  .hint { color: #8a94a6; font-size: 13px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <h1>QA 安全测试页 · 登录</h1>
+  <div class="sub">用于验证「凭据注入 + 截图遮蔽」链路。提交后显示真值面板：密码只显示长度与 SHA-256。</div>
+
+  <div class="card">
+    <label for="user">账号</label>
+    <input id="user" type="text" autocomplete="off" placeholder="qa-user@example.test">
+
+    <label for="pwd">密码</label>
+    <input id="pwd" type="password" autocomplete="off" placeholder="password">
+
+    <label for="otp">短信验证码（6 位）</label>
+    <input id="otp" type="text" maxlength="6" autocomplete="off" placeholder="000000">
+
+    <div class="row">
+      <button id="login">登录</button>
+      <button id="clear" class="ghost">清空</button>
+    </div>
+    <div class="toggle"><label style="display:inline"><input id="show" type="checkbox"> 显示密码明文（模拟“不安全的应用回显”）</label></div>
+
+    <div id="result"></div>
+    <div class="hint">真值面板（明文只在这里出现时说明应用不安全）：</div>
+    <pre id="truth">尚未提交</pre>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function sha256(text) {
+  try {
+    const buf = new TextEncoder().encode(text);
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return 'unavailable'; }
+}
+
+$('show').addEventListener('change', () => {
+  $('pwd').type = $('show').checked ? 'text' : 'password';
+});
+
+$('clear').addEventListener('click', () => {
+  $('user').value = ''; $('pwd').value = ''; $('otp').value = '';
+  $('result').textContent = ''; $('truth').textContent = '尚未提交';
+});
+
+$('login').addEventListener('click', async () => {
+  const user = $('user').value;
+  const pwd = $('pwd').value;
+  const otp = $('otp').value;
+  const sha = await sha256(pwd);
+  const ok = user.length > 0 && pwd.length > 0 && otp.length === 6;
+  const r = $('result');
+  r.textContent = ok ? 'LOGIN OK' : 'LOGIN FAILED（字段不完整）';
+  r.className = ok ? 'ok' : 'bad';
+  $('truth').textContent =
+    'user=' + user + '\n' +
+    'pwdLen=' + pwd.length + '\n' +
+    'pwdSha256=' + sha + '\n' +
+    'otp=' + otp;
+  document.title = 'QA 安全测试页 - ' + (ok ? 'OK' : 'FAILED');
+});
+</script>
+</body>
+</html>
