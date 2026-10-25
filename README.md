@@ -39,10 +39,13 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 ## 安装
 
 ```sh
-# 从 GitHub Release 的打包产物安装（不需要 npm 发布）
+# 方式一：从 npm 安装（推荐）
+dsh plugin add dsh-vm-tester
+
+# 方式二：从 GitHub Release 的打包产物
 dsh plugin add https://github.com/yugejixian/vm-blackbox/releases/download/v0.1.0/dsh-vm-tester-0.1.0.tgz
 
-# 或从本仓库安装
+# 方式三：从本仓库安装
 dsh plugin add github:yugejixian/vm-blackbox
 ```
 
