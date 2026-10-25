@@ -93,6 +93,7 @@ export function apply(ctx, config) {
           width: { type: 'number' },
           height: { type: 'number' },
           bytes: { type: 'number' },
+          via: { type: 'string' },
           attachment: { type: 'object' },
         },
         required: ['path', 'width', 'height', 'bytes'],
@@ -101,7 +102,7 @@ export function apply(ctx, config) {
       render(_args, value) {
         const blocks = [{
           type: 'text',
-          text: `guest screen ${value.width}x${value.height} (${value.bytes} bytes) saved at ${value.path}`,
+          text: `guest screen ${value.width}x${value.height} (${value.bytes} bytes, capture=${value.via || 'guest'}) saved at ${value.path}` + (value.via === 'host' ? ' [3D window detected: this frame came from the host framebuffer]' : ''),
         }]
         if (value.attachment) blocks.push({ type: 'image', attachment: value.attachment })
         return blocks
@@ -116,7 +117,7 @@ export function apply(ctx, config) {
       const path = join(shotsDir, `shot-${Date.now()}.jpg`)
       writeFileSync(path, bytes)
       const attachment = await ctx.attachments.saveImage({ data: bytes, mediaType: 'image/jpeg' })
-      return { path, width: info.w, height: info.h, bytes: bytes.length, attachment }
+      return { path, width: info.w, height: info.h, bytes: bytes.length, via, attachment }
     },
     isConcurrencySafe: () => false,
   }))

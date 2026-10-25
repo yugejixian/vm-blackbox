@@ -46,6 +46,23 @@ Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\t
 # 3) 等 60–90 秒，vm_status 应为 connected:true
 ```
 
+## 代理自启（2026-10-25 修）
+
+**不要依赖计划任务**。实测：`QaTunnel` 的 `ONLOGON + /IT + HIGHEST` 计划任务在快照恢复/冷启动后**不会留下进程**（任务显示 LastResult=0，但 `tasklist` 里没有 QaTunnel）。怀疑是 HighestAvailable 在当前 UAC 配置下静默失败。
+
+**现在的做法**：启动文件夹快捷方式直接跑 exe（非提权）：
+
+```
+C:\Users\qa\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\QaTunnel Autostart.lnk
+    → 目标：C:\qa\QaTunnel.exe    工作目录：C:\qa
+```
+
+脚本：`scripts/mk-startup.ps1`（首次创建）、`scripts/fix-startup.ps1`（改成直指 exe）。
+
+**代价**：非提权代理无法向提权窗口（UAC 提升过的安装程序）发合成输入。需要测提权程序时再手动用计划任务拉起，并接受可能失败。
+
+**另一个必查项**：宿主侧 `tunnel-host.js` 在宿主睡眠后不会自动恢复，访客日志会刷「积极拒绝 10.0.2.2:8801」。开测前先 `curl http://127.0.0.1:8890/status` 确认。
+
 ## 环境约定：提权不弹窗
 
 测试机的 UAC **不弹窗、管理员进程静默提权**：
@@ -92,6 +109,18 @@ Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\t
 - 实测：`show` 与 `headless` 双向切换，从关机到隧道就绪各约 **24 秒**。
 - **同时操作会打架**：你在窗口里点的时候，自动测试的合成点击也会生效。
 - 脚本必须存成 **UTF-8 with BOM**，否则 PowerShell 5.1 按 ANSI 解码，中文会让引号错位、整份脚本语法失败（`build-vm.ps1` 同样处理过）。
+
+## 陈旧帧检测（2026-10-25 修）
+
+访客代理用 GDI 抓屏，**抓不到 D3D/Unity 这类 3D 窗口**——但它不报错，而是返回上一帧桌面。测试员会以为游戏没启动（这就是 10/24 演示时踩的坑）。
+
+**现在的判据**（在 `tunnel-host.js` 的 `/shot` 里）：
+
+1. 访客帧与上一张**完全相同** → 顺手抓一张宿主帧缓冲；
+2. 宿主帧**变了** → 判定访客陈旧，切到宿主抓帧，保持 60 秒；
+3. 响应头 `X-Shot-Via: host` 标明来源，插件在工具返回文案里写 `capture=host`。
+
+**限制**：如果 3D 画面本身静止不动（例如停在静态菜单），宿主帧也不变，就不会触发——此时可手动加 `?src=host` 强制宿主抓帧。
 
 ## 坐标标尺（截图自带坐标系）
 

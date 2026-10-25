@@ -5,6 +5,7 @@
 // so /shot first tries the guest and falls back to the VirtualBox framebuffer capture,
 // which is then decorated with the same coordinate ruler by RulerOverlay.exe.
 const net = require('net');
+const crypto = require('crypto');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -92,6 +93,11 @@ function run(cmd, args, timeoutMs) {
 }
 
 let shotSeq = 0;
+// 陈旧帧检测状态：访客 GDI 抓不到 D3D/3D 画面时会返回上一帧，这里自动改走宿主帧缓冲。
+let lastGuestHash = null;
+let lastHostHash = null;
+let staleUntil = 0;
+const sha1 = (b) => crypto.createHash('sha1').update(b).digest('hex');
 async function hostShot(quality, persist) {
   fs.mkdirSync(SHOTS, { recursive: true });
   const stamp = Date.now() + '-' + (shotSeq++);
@@ -212,6 +218,28 @@ http.createServer(async (req, res) => {
         let buf = null, file = null, via = 'guest';
         if (src !== 'host') {
           try { buf = await call('SHOT', [String(q)], 6000); } catch (e) { buf = null; }
+        }
+        // ---- 陈旧帧检测 ----
+        // 访客 GDI 截不到 3D/D3D 交换链时不会报错，而是返回上一帧桌面。
+        // 判据：访客帧与上一张完全相同，但宿主帧缓冲却在变 → 判定为陈旧，改走宿主抓帧（保持 60 秒）。
+        if (buf) {
+          const gh = sha1(buf);
+          const guestRepeated = lastGuestHash && gh === lastGuestHash;
+          const inStaleMode = Date.now() < staleUntil;
+          if (inStaleMode || guestRepeated) {
+            try {
+              const r = await hostShot(q, false);
+              const hh = sha1(r.buf);
+              const hostChanged = !lastHostHash || hh !== lastHostHash;
+              lastHostHash = hh;
+              if (inStaleMode || hostChanged) {
+                if (!inStaleMode) log('guest frame stale while host frame changed -> host capture for 60s');
+                staleUntil = Date.now() + 60000;
+                buf = r.buf; file = null; via = 'host';
+              }
+            } catch (e) { log('host capture probe failed: ' + e.message); }
+          }
+          lastGuestHash = gh;
         }
         if (!buf) {
           via = 'host';
