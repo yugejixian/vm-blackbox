@@ -14,6 +14,9 @@ const { spawn } = require('child_process');
 const TCP_PORT = 8801;
 const HTTP_PORT = 8890;
 const SHOTS = 'D:\\null_work\\shots';
+const AGENT_DIR = 'D:\\null_work\\agent';
+const VAULT_GET = AGENT_DIR + '\\vault-get.ps1';
+const PS = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
 const VBOX = 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
 const VM = 'qa-win11-zh';
@@ -93,11 +96,40 @@ function run(cmd, args, timeoutMs) {
 }
 
 let shotSeq = 0;
+// 敏感区域（来自 /type-secret）：宿主机抓帧也要遮蔽，否则会绕过代理侧遮罩。
+let activeMasks = [];
+function pushMask(m) {
+  if (!m || !Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.w) || !Number.isFinite(m.h)) return;
+  activeMasks.push({ x: m.x, y: m.y, w: m.w, h: m.h, until: Date.now() + 180000 });
+}
+function liveMaskTokens() {
+  const now = Date.now();
+  activeMasks = activeMasks.filter((m) => m.until > now);
+  return activeMasks.map((m) => m.x + ',' + m.y + ',' + m.w + ',' + m.h);
+}
 // 陈旧帧检测状态：访客 GDI 抓不到 D3D/3D 画面时会返回上一帧，这里自动改走宿主帧缓冲。
 let lastGuestHash = null;
 let lastHostHash = null;
 let staleUntil = 0;
 const sha1 = (b) => crypto.createHash('sha1').update(b).digest('hex');
+
+// 跑一条命令并拿到 stdout（凭据解密用；绝不打日志）
+function runCapture(cmd, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { windowsHide: true });
+    let out = '', err = '', done = false;
+    const t = setTimeout(() => { if (done) return; done = true; try { p.kill(); } catch (e) { } reject(new Error('timeout:' + path.basename(cmd))); }, timeoutMs);
+    p.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    p.stderr.on('data', (d) => { err += d.toString('utf8'); });
+    p.on('error', (e) => { if (!done) { done = true; clearTimeout(t); reject(e); } });
+    p.on('exit', (code) => {
+      if (done) return;
+      done = true; clearTimeout(t);
+      if (code === 0) resolve(out); else reject(new Error('exit ' + code + ' ' + err.slice(0, 200)));
+    });
+  });
+}
+
 async function guestCursor() {
   try {
     const j = await call('CURSOR', [], 1200);
@@ -108,14 +140,15 @@ async function guestCursor() {
 }
 
 // 抓屏不含系统光标（光标由宿主绘制），这里把代理报告的指针位置画成合成箭头。
-async function overlayCursor(buf, quality) {
+async function overlayCursor(buf, quality, maskTokens) {
   try {
     const stamp = Date.now() + '-' + (shotSeq++);
     const ip = path.join(SHOTS, 'gc-' + stamp + '.jpg');
     const op = path.join(SHOTS, 'gco-' + stamp + '.jpg');
     fs.writeFileSync(ip, buf);
     const c = await guestCursor();
-    await run(OVERLAY, [ip, op, '-1', '-1', String(quality), String(c.x), String(c.y), 'noruler'], 15000);
+    const maskArgs = (maskTokens || []).map((m) => 'mask=' + m);
+    await run(OVERLAY, [ip, op, '-1', '-1', String(quality), String(c.x), String(c.y), 'noruler', ...maskArgs], 15000);
     const out = fs.readFileSync(op);
     try { fs.unlinkSync(ip); } catch (e) { }
     try { fs.unlinkSync(op); } catch (e) { }
@@ -123,7 +156,7 @@ async function overlayCursor(buf, quality) {
   } catch (e) { return buf; }
 }
 
-async function hostShot(quality, persist) {
+async function hostShot(quality, persist, maskTokens) {
   fs.mkdirSync(SHOTS, { recursive: true });
   const stamp = Date.now() + '-' + (shotSeq++);
   const raw = path.join(SHOTS, 'raw-' + stamp + '.png');
@@ -132,7 +165,8 @@ async function hostShot(quality, persist) {
   const cx = lastClick ? lastClick.x : -1;
   const cy = lastClick ? lastClick.y : -1;
   const cur = await guestCursor();
-  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y)], 15000);
+  const maskArgs = (maskTokens || []).map((m) => 'mask=' + m);
+  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y), ...maskArgs], 15000);
   const buf = fs.readFileSync(out);
   try { fs.unlinkSync(raw); } catch (e) { }
   if (!persist) { try { fs.unlinkSync(out); } catch (e) { } return { buf, file: null }; }
@@ -248,8 +282,21 @@ http.createServer(async (req, res) => {
         const q = parseInt(u.searchParams.get('q') || '80', 10);
         const src = u.searchParams.get('src');
         let buf = null, file = null, via = 'guest';
+        const shotMasks = [];
+        const maskParam = u.searchParams.get('mask') || '';
+        for (const part of maskParam.split(';')) {
+          const f = part.split(',').map((v) => parseInt(v, 10));
+          if (f.length === 4 && f.every((v) => Number.isFinite(v)) && f[2] > 0 && f[3] > 0) shotMasks.push(...f.map(String));
+        }
+        const maskTokens = shotMasks.length
+          ? shotMasks.reduce((acc, v, i) => { if (i % 4 === 0) acc.push(shotMasks.slice(i, i + 4).join(',')); return acc; }, [])
+          : [];
+        const activeTokens = liveMaskTokens();
+        const allTokens = maskTokens.concat(activeTokens);
+        const flatMasks = allTokens.reduce((acc, t) => { acc.push(...t.split(',')); return acc; }, []);
+        const shotArgs = [String(q), 'ruler', ...flatMasks];
         if (src !== 'host') {
-          try { buf = await call('SHOT', [String(q)], 6000); } catch (e) { buf = null; }
+          try { buf = await call('SHOT', shotArgs, 8000); } catch (e) { buf = null; }
         }
         // ---- 陈旧帧检测 ----
         // 访客 GDI 截不到 3D/D3D 交换链时不会报错，而是返回上一帧桌面。
@@ -260,7 +307,7 @@ http.createServer(async (req, res) => {
           const inStaleMode = Date.now() < staleUntil;
           if (inStaleMode || guestRepeated) {
             try {
-              const r = await hostShot(q, false);
+              const r = await hostShot(q, false, allTokens);
               const hh = sha1(r.buf);
               const hostChanged = !lastHostHash || hh !== lastHostHash;
               lastHostHash = hh;
@@ -275,12 +322,12 @@ http.createServer(async (req, res) => {
         }
         if (!buf) {
           via = 'host';
-          const r = await hostShot(q, false);
+          const r = await hostShot(q, false, allTokens);
           buf = r.buf;
           file = r.file;
           log('guest capture failed, used host framebuffer');
         }
-        if (buf && via === 'guest') buf = await overlayCursor(buf, q);
+        if (buf && via === 'guest') buf = await overlayCursor(buf, q, allTokens);
         if (!file && u.searchParams.get('nosave') !== '1') {
           fs.mkdirSync(SHOTS, { recursive: true });
           file = path.join(SHOTS, 'shot-' + Date.now() + '.jpg');
@@ -299,6 +346,27 @@ http.createServer(async (req, res) => {
         await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
         if (Number.isFinite(x) && Number.isFinite(y)) lastClick = { x, y };
         res.end('{"ok":true}');
+        return;
+      }
+      case '/type-secret': {
+        const name = u.searchParams.get('name') || '';
+        if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name)) { res.statusCode = 400; res.end('{"ok":false,"err":"bad name"}'); return; }
+        let secret = '';
+        try {
+          secret = await runCapture(PS, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', VAULT_GET, '-Name', name], 20000);
+        } catch (e) {
+          log('vault get failed for ' + name + ': ' + e.message);
+          res.statusCode = 404; res.end('{"ok":false,"err":"secret not found"}'); return;
+        }
+        secret = secret.replace(/\r?\n$/, '');
+        if (!secret) { res.statusCode = 404; res.end('{"ok":false,"err":"secret empty"}'); return; }
+        const b64 = Buffer.from(secret, 'utf8').toString('base64');
+        let masked = false;
+        try { const rj = await call('SECRET', [b64], 20000); try { const o = JSON.parse(rj); masked = !!o.masked; if (masked) { if (Array.isArray(o.masks)) { for (const m of o.masks) pushMask({ x: m[0], y: m[1], w: m[2], h: m[3] }); } else pushMask(o); } } catch (e) { } }
+        catch (e) { secret = ''; res.statusCode = 500; res.end('{"ok":false,"err":"guest failed"}'); return; }
+        secret = ''; // 用完即弃
+        res.setHeader('Content-Type', 'application/json');
+        res.end('{"ok":true,"masked":' + masked + '}');
         return;
       }
       case '/type': {

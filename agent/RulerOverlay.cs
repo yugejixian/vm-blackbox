@@ -25,6 +25,16 @@ namespace RulerOverlay
             if (args.Length >= 5) int.TryParse(args[4], out quality);
             if (args.Length >= 7) { int.TryParse(args[5], out mx); int.TryParse(args[6], out my); }
             for (int i = 2; i < args.Length; i++) if (args[i] == "noruler") drawRuler = false;
+            var masks = new System.Collections.Generic.List<Rectangle>();
+            for (int i = 2; i < args.Length; i++) if (args[i].StartsWith("mask=")) {
+                foreach (string part in args[i].Substring(5).Split(';')) {
+                    string[] f = part.Split(',');
+                    int tx, ty, tw, th;
+                    if (f.Length == 4 && int.TryParse(f[0], out tx) && int.TryParse(f[1], out ty)
+                        && int.TryParse(f[2], out tw) && int.TryParse(f[3], out th) && tw > 0 && th > 0)
+                        masks.Add(new Rectangle(tx, ty, tw, th));
+                }
+            }
             quality = Math.Max(30, Math.Min(95, quality));
 
             using (var bmp = new Bitmap(args[0]))
@@ -34,6 +44,7 @@ namespace RulerOverlay
                     if (drawRuler) DrawRuler(g, bmp.Width, bmp.Height);
                     if (cx >= 0 && cy >= 0) DrawClick(g, bmp.Width, bmp.Height, cx, cy);
                     if (mx >= 0 && my >= 0) DrawCursor(g, mx, my);
+                    foreach (var m in masks) DrawMask(g, bmp.Width, bmp.Height, m);
                 }
                 var enc = GetEncoder(ImageFormat.Jpeg);
                 using (var ps = new EncoderParameters(1))
@@ -80,6 +91,22 @@ namespace RulerOverlay
                     g.FillRectangle(back, w - sz.Width - 8f, y + 2f, sz.Width + 6f, sz.Height + 2f);
                     g.DrawString(s, font, fore, w - sz.Width - 6f, y + 3f);
                 }
+            }
+        }
+
+        // 敏感区域涂黑（宿主机抓帧路径也必须在落盘/发送前遮蔽）
+        private static void DrawMask(Graphics g, int w, int h, Rectangle raw)
+        {
+            Rectangle m = Rectangle.Intersect(new Rectangle(0, 0, w, h), raw);
+            if (m.Width <= 0 || m.Height <= 0) return;
+            using (var black = new SolidBrush(Color.Black))
+            using (var pen = new Pen(Color.FromArgb(255, 255, 60, 60), 3f))
+            using (var font = new Font("Consolas", 16f, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var fore = new SolidBrush(Color.FromArgb(255, 255, 80, 80)))
+            {
+                g.FillRectangle(black, m);
+                g.DrawRectangle(pen, m.X - 1, m.Y - 1, m.Width + 1, m.Height + 1);
+                g.DrawString("REDACTED", font, fore, m.X + 6, m.Y + 4);
             }
         }
 

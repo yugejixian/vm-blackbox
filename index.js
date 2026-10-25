@@ -110,7 +110,11 @@ export function apply(ctx, config) {
     },
     async execute(args) {
       const quality = Math.min(95, Math.max(30, Number(args?.quality ?? 80)))
-      const res = await request(`/shot?q=${quality}`)
+      const masks = Array.isArray(args?.mask)
+        ? args.mask.filter((m) => m && [m.x, m.y, m.w, m.h].every((v) => Number.isFinite(v)) && m.w > 0 && m.h > 0)
+        : []
+      const maskQuery = masks.length ? '&mask=' + masks.map((m) => `${m.x},${m.y},${m.w},${m.h}`).join(';') : ''
+      const res = await request(`/shot?q=${quality}${maskQuery}`)
       const bytes = new Uint8Array(await res.arrayBuffer())
       const info = await requestJson('/info')
       mkdirSync(shotsDir, { recursive: true })
@@ -189,6 +193,43 @@ export function apply(ctx, config) {
   }))
 
   ctx.effect(() => ctx.tools.register({
+    name: 'vm_type_secret',
+    description:
+      'Type a secret (password / token) from the host-side vault into the focused field. ' +
+      'The secret value NEVER enters the model context: you only pass the credential NAME. ' +
+      'After typing, screenshots are automatically redacted over that field for a few minutes. ' +
+      'Ask the operator for available credential names; never ask for the secret itself.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Vault credential name, e.g. "qa_login".' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' }, masked: { type: 'boolean' } },
+        required: ['ok'],
+        additionalProperties: true,
+      },
+      render(args, value) {
+        return [{
+          type: 'text',
+          text: `typed secret "${args?.name}" from vault (field redacted in screenshots: ${value?.masked ? 'yes' : 'no'})`,
+        }]
+      },
+    },
+    async execute(args) {
+      const name = String(args?.name ?? '')
+      if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name)) throw new Error('invalid secret name')
+      return await requestJson(`/type-secret?name=${encodeURIComponent(name)}`)
+    },
+    isConcurrencySafe: () => false,
+  }))
+
+ctx.effect(() => ctx.tools.register({
     name: 'vm_key',
     description:
       'Press a key or key combination in the guest, e.g. "enter", "escape", "tab", "ctrl+s", "alt+f4", "win+r", "f5". ' +

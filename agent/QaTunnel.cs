@@ -23,6 +23,9 @@ namespace QaTunnel
         private static string _log = @"C:\qa\tunnel.log";
         private static int _lastClickX = int.MinValue, _lastClickY = int.MinValue;
         private static long _lastClickTick;
+        // 敏感区域：SECRET 操作后自动把焦点控件遮蔽一段时间，防止密码进截图。
+        private static List<Rectangle> _secretMasks = new List<Rectangle>();
+        private static long _secretUntilTicks = 0;
 
         private static void Main(string[] args)
         {
@@ -77,11 +80,38 @@ namespace QaTunnel
                             {
                                 case "CURSOR": { POINT cp; if (GetCursorPos(out cp)) SendOk(ns, id, "{\"x\":" + cp.X + ",\"y\":" + cp.Y + "}"); else SendErr(ns, id, "cursor failed"); break; }
                                 case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\"}"); break;
+                                case "SECRET":
+                                    {
+                                        string txt = Encoding.UTF8.GetString(Convert.FromBase64String(parts[2]));
+                                        Rectangle fr = FocusRect();
+                                        _secretMasks = new List<Rectangle>();
+                                        if (!fr.IsEmpty) {
+                                            _secretMasks.Add(fr);
+                                            var wr = WindowRect(GetForegroundWindow());
+                                            if (!wr.IsEmpty) _secretMasks.Add(new Rectangle(wr.X, wr.Y, wr.Width, Math.Min(56, wr.Height)));
+                                            _secretUntilTicks = DateTime.Now.AddSeconds(180).Ticks;
+                                        }
+                                        TypeText(txt);
+                                        var parts2 = new List<string>();
+                                        foreach (var m in _secretMasks) parts2.Add("[" + m.X + "," + m.Y + "," + m.Width + "," + m.Height + "]");
+                                        SendOk(ns, id, "{\"masked\":" + (_secretMasks.Count == 0 ? "false" : "true") + ",\"masks\":[" + string.Join(",", parts2.ToArray()) + "]}");
+                                        break;
+                                    }
                                 case "SHOT":
                                     {
                                         int q = parts.Length > 2 ? int.Parse(parts[2]) : 80;
                                         bool ruler = !(parts.Length > 3 && parts[3] == "plain");
-                                        byte[] jpg = CaptureJpeg(q, ruler);
+                                        var masks = new List<Rectangle>();
+                                        for (int mi = 4; mi + 3 < parts.Length; mi += 4)
+                                        {
+                                            int mx, my, mw, mh;
+                                            if (int.TryParse(parts[mi], out mx) && int.TryParse(parts[mi + 1], out my)
+                                                && int.TryParse(parts[mi + 2], out mw) && int.TryParse(parts[mi + 3], out mh)
+                                                && mw > 0 && mh > 0)
+                                                masks.Add(new Rectangle(mx, my, mw, mh));
+                                        }
+                                        if (DateTime.Now.Ticks < _secretUntilTicks) masks.AddRange(_secretMasks);
+                                        byte[] jpg = CaptureJpeg(q, ruler, masks);
                                         byte[] head = Encoding.ASCII.GetBytes(id + " OK " + jpg.Length + "\n");
                                         ns.Write(head, 0, head.Length);
                                         ns.Write(jpg, 0, jpg.Length);
@@ -146,7 +176,7 @@ namespace QaTunnel
         private static int W() { return GetSystemMetrics(0); }
         private static int H() { return GetSystemMetrics(1); }
 
-        private static byte[] CaptureJpeg(int quality, bool ruler)
+        private static byte[] CaptureJpeg(int quality, bool ruler, List<Rectangle> masks = null)
         {
             int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
             using (var bmp = new Bitmap(w, h, PixelFormat.Format24bppRgb))
@@ -155,6 +185,7 @@ namespace QaTunnel
                 {
                     g.CopyFromScreen(0, 0, 0, 0, new Size(w, h), CopyPixelOperation.SourceCopy);
                     if (ruler) { DrawRuler(g, w, h); DrawClickMarker(g, w, h); }
+                    DrawMasks(g, w, h, masks);
                 }
                 using (var ms = new MemoryStream())
                 {
@@ -170,6 +201,59 @@ namespace QaTunnel
         }
 
         // Crosshair at the LAST click position so the model can see where its click actually landed.
+
+        private static Rectangle WindowRect(IntPtr hWnd)
+        {
+            try
+            {
+                if (hWnd == IntPtr.Zero) return Rectangle.Empty;
+                RECTW r;
+                if (!GetWindowRect(hWnd, out r)) return Rectangle.Empty;
+                int w = r.Right - r.Left, h = r.Bottom - r.Top;
+                if (w <= 0 || h <= 0) return Rectangle.Empty;
+                return new Rectangle(r.Left, r.Top, w, h);
+            }
+            catch { return Rectangle.Empty; }
+        }
+
+        private static Rectangle FocusRect()
+        {
+            try
+            {
+                IntPtr hFocus = FindFocusWindow();
+                if (hFocus == IntPtr.Zero) return Rectangle.Empty;
+                RECTW r;
+                if (!GetWindowRect(hFocus, out r)) return Rectangle.Empty;
+                int w = r.Right - r.Left, h = r.Bottom - r.Top;
+                if (w <= 0 || h <= 0) return Rectangle.Empty;
+                return new Rectangle(r.Left, r.Top, w, h);
+            }
+            catch { return Rectangle.Empty; }
+        }
+
+        // 把敏感区域涂黑（必须在编码/落盘之前做）
+        private static void DrawMasks(Graphics g, int w, int h, List<Rectangle> masks)
+        {
+            if (masks == null || masks.Count == 0) return;
+            using (var black = new SolidBrush(Color.Black))
+            using (var pen = new Pen(Color.FromArgb(255, 255, 60, 60), 3f))
+            using (var font = new Font("Consolas", 16f, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var fore = new SolidBrush(Color.FromArgb(255, 255, 80, 80)))
+            {
+                foreach (var mRaw in masks)
+                {
+                    Rectangle m = Rectangle.Intersect(new Rectangle(0, 0, w, h), mRaw);
+                    if (m.Width <= 0 || m.Height <= 0) continue;
+                    g.FillRectangle(black, m);
+                    g.DrawRectangle(pen, m.X - 1, m.Y - 1, m.Width + 1, m.Height + 1);
+                    g.DrawString("REDACTED", font, fore, m.X + 6, m.Y + 4);
+                }
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)] private struct RECTW { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECTW r);
+
         private static void DrawClickMarker(Graphics g, int w, int h)
         {
             if (_lastClickX == int.MinValue) return;
@@ -309,7 +393,10 @@ namespace QaTunnel
             if (SetClipboardText(text))
             {
                 Thread.Sleep(80);
-                if (PressCombo("ctrl+v")) { Thread.Sleep(150); return; }
+                bool ok = PressCombo("ctrl+v");
+                Thread.Sleep(150);
+                try { SetClipboardText(""); } catch { }   // 用完立刻清空，避免密码留在剪贴板
+                if (ok) return;
             }
             // 兜底：逐字 Unicode 注入（并临时解绑输入法），导致字母丢失/字符重复。
             // 打字前把输入法上下文从焦点窗口解绑，打完再恢复。
