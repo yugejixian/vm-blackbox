@@ -24,7 +24,7 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 
 虚拟机主动外连宿主，**不需要给虚拟机开入站端口**。
 
-## 七个工具
+## 八个工具
 
 | 工具 | 作用 |
 |---|---|
@@ -32,6 +32,7 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 | `vm_screenshot` | 截当前屏幕；图上带**坐标标尺**（每 200px 标注原生像素）和上次点击的准星 |
 | `vm_click(x,y)` | 左键点击（原生像素坐标） |
 | `vm_type(text)` | 往当前焦点输入文本（支持中文，Unicode 注入） |
+| `vm_type_secret(name)` | 从宿主凭据库注入密码/令牌，**明文不进模型上下文**；注入后相关区域自动遮蔽 |
 | `vm_key(combo)` | 按一个键或组合键：`enter` / `esc` / `win+r` / `ctrl+a` … |
 | `vm_key_basic(key)` | 只允许普通键（给"只会回车的普通用户"挡位用，防止它用快捷键作弊） |
 | `vm_wait(ms)` | 等待 |
@@ -78,7 +79,8 @@ dsh plugin add github:yugejixian/vm-blackbox
 | 根目录 | npm 包本身：`index.js`、`package.json`、`cordis.patch.yml`、`locale/`、`icon.svg` |
 | [`agent/`](agent) | 虚拟机内代理、宿主隧道、标定工具 |
 | [`scripts/`](scripts) | 建虚拟机、窗口/无窗口切换、运行体检、截图清理、桌面围观小窗 |
-| [`cases/`](cases) | 八条示例用例（记事本/计算器/安装/取消/卸载/游戏/资源管理器/浏览器） |
+| [`cases/`](cases) | 九条示例用例（记事本/计算器/安装/取消/卸载/游戏/资源管理器/浏览器/安全登录） |
+| [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录 |
 | [`docs/`](docs) | 部署交接、打包清单、发布检查表 |
 | [`examples/`](examples) | 测试员提示词模板、执行报告模板 |
 
