@@ -115,6 +115,7 @@ export function apply(ctx, config) {
         : []
       const maskQuery = masks.length ? '&mask=' + masks.map((m) => `${m.x},${m.y},${m.w},${m.h}`).join(';') : ''
       const res = await request(`/shot?q=${quality}${maskQuery}`)
+      const via = res.headers.get('x-shot-via') || 'guest'
       const bytes = new Uint8Array(await res.arrayBuffer())
       const info = await requestJson('/info')
       mkdirSync(shotsDir, { recursive: true })
