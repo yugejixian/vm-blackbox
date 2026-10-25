@@ -249,16 +249,94 @@ namespace QaTunnel
             if (dbl) { Thread.Sleep(60); SendMouse(MOUSEEVENTF_LEFTDOWN, 0, 0, 0); Thread.Sleep(30); SendMouse(MOUSEEVENTF_LEFTUP, 0, 0, 0); }
         }
 
+
+        private static bool SetClipboardText(string text)
+        {
+            const uint CF_UNICODETEXT = 13;
+            IntPtr hMem = IntPtr.Zero;
+            try
+            {
+                int bytes = (text.Length + 1) * 2;
+                hMem = GlobalAlloc(0x0042 /*GMEM_MOVEABLE|GMEM_ZEROINIT*/, (UIntPtr)bytes);
+                if (hMem == IntPtr.Zero) return false;
+                IntPtr p = GlobalLock(hMem);
+                if (p == IntPtr.Zero) return false;
+                byte[] data = Encoding.Unicode.GetBytes(text + "\0");
+                Marshal.Copy(data, 0, p, data.Length);
+                GlobalUnlock(hMem);
+                for (int i = 0; i < 10; i++)
+                {
+                    if (OpenClipboard(IntPtr.Zero))
+                    {
+                        try
+                        {
+                            EmptyClipboard();
+                            if (SetClipboardData(CF_UNICODETEXT, hMem) != IntPtr.Zero) hMem = IntPtr.Zero;
+                        }
+                        finally { CloseClipboard(); }
+                        return true;
+                    }
+                    Thread.Sleep(50);
+                }
+                return false;
+            }
+            finally { if (hMem != IntPtr.Zero) GlobalFree(hMem); }
+        }
+
         private static void TypeText(string text)
         {
-            foreach (char ch in text)
+            // 首选剪贴板粘贴：Unicode 键盘事件在中文 Windows 上会被输入法/编辑器改写（实测错字），粘贴是精确的。
+            if (SetClipboardText(text))
             {
-                if (ch == '\n') { TapKey(0x0D); continue; }
-                if (ch == '\t') { TapKey(0x09); continue; }
-                SendKey(0, ch, KEYEVENTF_UNICODE);
-                SendKey(0, ch, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
-                Thread.Sleep(6);
+                Thread.Sleep(80);
+                if (PressCombo("ctrl+v")) { Thread.Sleep(150); return; }
             }
+            // 兜底：逐字 Unicode 注入（并临时解绑输入法），导致字母丢失/字符重复。
+            // 打字前把输入法上下文从焦点窗口解绑，打完再恢复。
+            IntPtr hFocus = FindFocusWindow();
+            IntPtr oldImc = IntPtr.Zero;
+            if (hFocus != IntPtr.Zero) { try { oldImc = ImmAssociateContext(hFocus, IntPtr.Zero); } catch { } }
+            try
+            {
+                foreach (char ch in text)
+                {
+                    if (ch == '\n') { TapKey(0x0D); Thread.Sleep(12); continue; }
+                    if (ch == '\t') { TapKey(0x09); Thread.Sleep(12); continue; }
+                    SendCharPair(ch);
+                    Thread.Sleep(10);
+                }
+            }
+            finally
+            {
+                if (hFocus != IntPtr.Zero) { try { ImmAssociateContext(hFocus, oldImc); } catch { } }
+            }
+        }
+
+        private static IntPtr FindFocusWindow()
+        {
+            IntPtr fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return IntPtr.Zero;
+            try
+            {
+                uint tid = GetWindowThreadProcessId(fg, IntPtr.Zero);
+                var gti = new GUITHREADINFO();
+                gti.cbSize = Marshal.SizeOf(typeof(GUITHREADINFO));
+                if (GetGUIThreadInfo(tid, ref gti) && gti.hwndFocus != IntPtr.Zero) return gti.hwndFocus;
+            }
+            catch { }
+            return fg;
+        }
+
+        // 一个字：keydown + keyup 放在同一次 SendInput 里，避免抬起事件丢失造成重复字符
+        private static void SendCharPair(char ch)
+        {
+            var kd = new KEYBDINPUT(); kd.wVk = 0; kd.wScan = ch; kd.dwFlags = KEYEVENTF_UNICODE;
+            var ku = new KEYBDINPUT(); ku.wVk = 0; ku.wScan = ch; ku.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+            var ud = new INPUTUNION(); ud.ki = kd;
+            var uu = new INPUTUNION(); uu.ki = ku;
+            var a = new INPUT(); a.type = INPUT_KEYBOARD; a.u = ud;
+            var b = new INPUT(); b.type = INPUT_KEYBOARD; b.u = uu;
+            SendInput(2, new INPUT[] { a, b }, Marshal.SizeOf(typeof(INPUT)));
         }
 
         private static void TapKey(ushort vk) { SendKey(vk, 0, 0); SendKey(vk, 0, KEYEVENTF_KEYUP); }
@@ -310,6 +388,37 @@ namespace QaTunnel
             var input = new INPUT(); input.type = INPUT_MOUSE; input.u = u;
             SendInput(1, new INPUT[] { input }, Marshal.SizeOf(typeof(INPUT)));
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int left, top, right, bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GUITHREADINFO
+        {
+            public int cbSize;
+            public int flags;
+            public IntPtr hwndActive;
+            public IntPtr hwndFocus;
+            public IntPtr hwndCapture;
+            public IntPtr hwndMenuOwner;
+            public IntPtr hwndMoveSize;
+            public IntPtr hwndCaret;
+            public RECT rcCaret;
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+        [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+        [DllImport("imm32.dll")] private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);
+
+        [DllImport("user32.dll")] private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+        [DllImport("user32.dll")] private static extern bool EmptyClipboard();
+        [DllImport("user32.dll")] private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+        [DllImport("user32.dll")] private static extern bool CloseClipboard();
+        [DllImport("kernel32.dll")] private static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+        [DllImport("kernel32.dll")] private static extern IntPtr GlobalLock(IntPtr hMem);
+        [DllImport("kernel32.dll")] private static extern bool GlobalUnlock(IntPtr hMem);
+        [DllImport("kernel32.dll")] private static extern IntPtr GlobalFree(IntPtr hMem);
 
         private static void Log(string m)
         {
