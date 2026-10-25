@@ -75,6 +75,7 @@ namespace QaTunnel
                         {
                             switch (op)
                             {
+                                case "CURSOR": { POINT cp; if (GetCursorPos(out cp)) SendOk(ns, id, "{\"x\":" + cp.X + ",\"y\":" + cp.Y + "}"); else SendErr(ns, id, "cursor failed"); break; }
                                 case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\"}"); break;
                                 case "SHOT":
                                     {
@@ -236,6 +237,25 @@ namespace QaTunnel
         }
 
         private static void MoveTo(int x, int y)
+        {
+            // 分步移动：围观者（1 帧/秒的抓帧）也能看出指针是从哪划过来的，而不是瞬移。
+            POINT cur;
+            int sx = x, sy = y;
+            if (GetCursorPos(out cur)) { sx = cur.X; sy = cur.Y; }
+            // 距离越远步数越多（约 350ms 走完），让 1 帧/秒的围观也能看出方向
+            int dx = x - sx, dy = y - sy;
+            int dist = (int)Math.Sqrt((double)dx * dx + (double)dy * dy);
+            int steps = Math.Max(3, Math.Min(14, dist / 45));
+            int delay = Math.Max(18, Math.Min(45, 350 / Math.Max(1, steps)));
+            for (int i = 1; i <= steps; i++)
+            {
+                SendMouseAbs(sx + dx * i / steps, sy + dy * i / steps);
+                Thread.Sleep(delay);
+            }
+            SendMouseAbs(x, y);
+        }
+
+        private static void SendMouseAbs(int x, int y)
         {
             int w = Math.Max(1, GetSystemMetrics(0) - 1), h = Math.Max(1, GetSystemMetrics(1) - 1);
             int nx = (int)((long)x * 65535 / w), ny = (int)((long)y * 65535 / h);
@@ -459,6 +479,8 @@ namespace QaTunnel
         private const uint MOUSEEVENTF_MOVE = 0x0001, MOUSEEVENTF_LEFTDOWN = 0x0002, MOUSEEVENTF_LEFTUP = 0x0004;
         private const uint MOUSEEVENTF_ABSOLUTE = 0x8000, MOUSEEVENTF_VIRTUALDESK = 0x4000;
 
+        [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+        [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
         [DllImport("user32.dll")] private static extern bool SetProcessDPIAware();
         [DllImport("user32.dll")] private static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
         [DllImport("user32.dll")] private static extern int GetSystemMetrics(int i);

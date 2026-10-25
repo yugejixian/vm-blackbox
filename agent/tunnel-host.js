@@ -98,6 +98,31 @@ let lastGuestHash = null;
 let lastHostHash = null;
 let staleUntil = 0;
 const sha1 = (b) => crypto.createHash('sha1').update(b).digest('hex');
+async function guestCursor() {
+  try {
+    const j = await call('CURSOR', [], 1200);
+    const o = JSON.parse(j);
+    if (Number.isFinite(o.x) && Number.isFinite(o.y)) return { x: o.x, y: o.y };
+  } catch (e) { }
+  return { x: -1, y: -1 };
+}
+
+// 抓屏不含系统光标（光标由宿主绘制），这里把代理报告的指针位置画成合成箭头。
+async function overlayCursor(buf, quality) {
+  try {
+    const stamp = Date.now() + '-' + (shotSeq++);
+    const ip = path.join(SHOTS, 'gc-' + stamp + '.jpg');
+    const op = path.join(SHOTS, 'gco-' + stamp + '.jpg');
+    fs.writeFileSync(ip, buf);
+    const c = await guestCursor();
+    await run(OVERLAY, [ip, op, '-1', '-1', String(quality), String(c.x), String(c.y), 'noruler'], 15000);
+    const out = fs.readFileSync(op);
+    try { fs.unlinkSync(ip); } catch (e) { }
+    try { fs.unlinkSync(op); } catch (e) { }
+    return out;
+  } catch (e) { return buf; }
+}
+
 async function hostShot(quality, persist) {
   fs.mkdirSync(SHOTS, { recursive: true });
   const stamp = Date.now() + '-' + (shotSeq++);
@@ -106,7 +131,8 @@ async function hostShot(quality, persist) {
   await run(VBOX, ['controlvm', VM, 'screenshotpng', raw], 15000);
   const cx = lastClick ? lastClick.x : -1;
   const cy = lastClick ? lastClick.y : -1;
-  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality)], 15000);
+  const cur = await guestCursor();
+  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y)], 15000);
   const buf = fs.readFileSync(out);
   try { fs.unlinkSync(raw); } catch (e) { }
   if (!persist) { try { fs.unlinkSync(out); } catch (e) { } return { buf, file: null }; }
@@ -212,6 +238,12 @@ http.createServer(async (req, res) => {
         })();
         return;
       }
+      case '/exit': {
+        try { await call('EXIT', [], 3000); } catch (e) { }
+        log('sent EXIT to guest');
+        res.end('{"ok":true}');
+        return;
+      }
       case '/shot': {
         const q = parseInt(u.searchParams.get('q') || '80', 10);
         const src = u.searchParams.get('src');
@@ -248,6 +280,7 @@ http.createServer(async (req, res) => {
           file = r.file;
           log('guest capture failed, used host framebuffer');
         }
+        if (buf && via === 'guest') buf = await overlayCursor(buf, q);
         if (!file && u.searchParams.get('nosave') !== '1') {
           fs.mkdirSync(SHOTS, { recursive: true });
           file = path.join(SHOTS, 'shot-' + Date.now() + '.jpg');

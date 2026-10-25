@@ -55,7 +55,7 @@ namespace VmWatch
                 else if (e.KeyCode == Keys.Space) { _paused = !_paused; UpdateStatus(); }
             };
 
-            _pump.Interval = 900;
+            _pump.Interval = 450;
             _pump.Tick += (s, e) => Pump();
             _pump.Start();
             Pump();

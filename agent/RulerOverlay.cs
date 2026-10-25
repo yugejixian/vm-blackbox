@@ -15,21 +15,25 @@ namespace RulerOverlay
         {
             if (args.Length < 2)
             {
-                Console.Error.WriteLine("usage: RulerOverlay <in> <out> [clickX clickY] [quality]");
+                Console.Error.WriteLine("usage: RulerOverlay <in> <out> <clickX> <clickY> <quality> [cursorX cursorY] [noruler]");
                 Environment.Exit(2);
             }
             int quality = 80;
-            int cx = -1, cy = -1;
+            int cx = -1, cy = -1, mx = -1, my = -1;
+            bool drawRuler = true;
             if (args.Length >= 4) { int.TryParse(args[2], out cx); int.TryParse(args[3], out cy); }
             if (args.Length >= 5) int.TryParse(args[4], out quality);
+            if (args.Length >= 7) { int.TryParse(args[5], out mx); int.TryParse(args[6], out my); }
+            for (int i = 2; i < args.Length; i++) if (args[i] == "noruler") drawRuler = false;
             quality = Math.Max(30, Math.Min(95, quality));
 
             using (var bmp = new Bitmap(args[0]))
             {
                 using (var g = Graphics.FromImage(bmp))
                 {
-                    DrawRuler(g, bmp.Width, bmp.Height);
+                    if (drawRuler) DrawRuler(g, bmp.Width, bmp.Height);
                     if (cx >= 0 && cy >= 0) DrawClick(g, bmp.Width, bmp.Height, cx, cy);
+                    if (mx >= 0 && my >= 0) DrawCursor(g, mx, my);
                 }
                 var enc = GetEncoder(ImageFormat.Jpeg);
                 using (var ps = new EncoderParameters(1))
@@ -77,6 +81,30 @@ namespace RulerOverlay
                     g.DrawString(s, font, fore, w - sz.Width - 6f, y + 3f);
                 }
             }
+        }
+
+        // 合成光标：绕开「抓屏不含系统光标」的限制，让围观者能看到指针在哪。
+        private static void DrawCursor(Graphics g, int x, int y)
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            Point[] arrow =
+            {
+                new Point(x, y),
+                new Point(x, y + 22),
+                new Point(x + 6, y + 17),
+                new Point(x + 10, y + 26),
+                new Point(x + 14, y + 24),
+                new Point(x + 10, y + 15),
+                new Point(x + 17, y + 15)
+            };
+            using (var fill = new SolidBrush(Color.FromArgb(255, 255, 255, 255)))
+            using (var outline = new Pen(Color.FromArgb(230, 0, 0, 0), 1.6f))
+            {
+                g.FillPolygon(fill, arrow);
+                g.DrawPolygon(outline, arrow);
+            }
+            using (var ring = new Pen(Color.FromArgb(180, 255, 215, 0), 1.4f))
+                g.DrawEllipse(ring, x - 9, y - 9, 18, 18);
         }
 
         private static void DrawClick(Graphics g, int w, int h, int x, int y)
