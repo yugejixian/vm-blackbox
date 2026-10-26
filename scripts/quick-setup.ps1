@@ -105,21 +105,31 @@ $m = [regex]::Match($listing, '([\d,]+)\s+QaTunnel\.exe')
 $guestSize = if ($m.Success) { [int]($m.Groups[1].Value -replace ',', '') } else { 0 }
 $procList = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'tasklist | findstr /i QaTunnel')
 $agentRunning = $procList -match 'QaTunnel\.exe'
+$needCopy = $true
 
-if ($agentRunning) {
-  if ($guestSize -eq $localSize) {
-    Write-Ok "访客代理已在运行且版本一致（$localSize 字节），跳过复制"
-    & $VBoxManage guestcontrol $VmName copyto --username $GuestUser --password $GuestPass (Join-Path $agentDir 'mk-agent-startup.ps1') 'C:\qa\mk-agent-startup.ps1' 2>$null | Out-Null
-  } else {
+if ($agentRunning -and $guestSize -eq $localSize) {
+  Write-Ok "访客代理已在运行且版本一致（$localSize 字节），跳过复制"
+  $needCopy = $false
+}
+elseif ($agentRunning) {
+  Write-Step "访客代理版本不一致（运行中 $guestSize 字节 / 本地 $localSize 字节），尝试停止旧代理"
+  # 代理可能由计划任务以高权限启动：先结束任务（普通权限也能操作自己的任务），再 taskkill
+  $null = Invoke-Guest 'C:\Windows\System32\schtasks.exe' @('/End', '/TN', 'QaTunnel')
+  Start-Sleep -Seconds 1
+  $null = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'taskkill /f /im QaTunnel.exe')
+  Start-Sleep -Seconds 2
+  $after = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'tasklist | findstr /i QaTunnel')
+  if ($after -match 'QaTunnel\.exe') {
     Write-Host ''
     Fail @"
-访客里的代理正在运行，无法覆盖（文件被占用）。当前大小 $guestSize 字节，本地 $localSize 字节。
-升级方式：在虚拟机里注销/重启（或任务管理器结束 QaTunnel），然后重跑本脚本。
+访客里的旧代理以高权限运行，普通权限无法结束。
+升级方式：重启虚拟机（或注销后重新登录），然后立刻重跑本脚本即可。
 "@
   }
-} else {
-  $null = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'taskkill /f /im QaTunnel.exe')
-  Start-Sleep -Seconds 1
+  Write-Ok '旧代理已停止，继续替换'
+}
+
+if ($needCopy) {
   foreach ($f in @('QaTunnel.exe', 'RulerOverlay.exe', 'mk-agent-startup.ps1')) {
     $copied = $false
     for ($try = 1; $try -le 3; $try++) {
