@@ -16,6 +16,8 @@ function q(value) {
 export function apply(ctx, config) {
   const base = String(config?.tunnelUrl ?? DEFAULT_TUNNEL).replace(/\/+$/, '')
   const shotsDir = String(config?.shotsDir ?? DEFAULT_SHOTS)
+  // 严格像素模式：只允许「截图 + 键鼠」；禁用无障碍树等额外观测通道
+  const strictPixelOnly = Boolean(config?.strictPixelOnly)
 
   // ---- 自动清理规则：截图目录不无限增长 ----
   // 保留最近 N 小时 或 最新 M 个文件，其余自动删除；每分钟最多检查一次。
@@ -96,7 +98,9 @@ export function apply(ctx, config) {
         return { connected: false, error: 'tunnel host has no guest session' }
       }
       const info = await requestJson('/info')
-      return { connected: true, width: info.w, height: info.h, user: info.user, foregroundWindow: info.fg || '' }
+      const base = { connected: true, width: info.w, height: info.h, user: info.user }
+      if (!strictPixelOnly) base.foregroundWindow = info.fg || ''
+      return base
     },
   }))
 
@@ -105,7 +109,7 @@ export function apply(ctx, config) {
     description:
       'Return the UI Automation tree of the FOREGROUND window: control types, names, AutomationIds and screen rectangles (with cx/cy click centers). ' +
       'Use this instead of estimating coordinates from screenshots: find the element by name/type, then vm_click its cx/cy. ' +
-      'Call vm_status first to confirm the foreground window.',
+      'Call vm_status first to confirm the foreground window. ' + 'Disabled when config.strictPixelOnly=true (screenshot-only black-box mode).',
     parameters: {
       type: 'object',
       properties: {
@@ -126,6 +130,9 @@ export function apply(ctx, config) {
       },
     },
     async execute(args) {
+      if (strictPixelOnly) {
+        return { error: 'vm_ui disabled: strictPixelOnly mode allows screenshots + mouse/keyboard only' }
+      }
       const depth = Number(args?.depth ?? 5)
       const maxNodes = Number(args?.maxNodes ?? 300)
       return requestJson(`/ui?depth=${depth}&maxNodes=${maxNodes}`)

@@ -1,6 +1,9 @@
 ## 0.1.6
 
 ### Added
+- **`strictPixelOnly` 配置**：严格像素模式（只允许截图 + 键鼠，禁用 `vm_ui` 与前台窗口标题），满足最纯粹的「傻子测试员」黑盒前提；默认关闭（辅助定位模式）。
+
+### Fixed
 - **vm_ui**：返回前台窗口的 UI Automation 元素树（类型/名称/AutomationId/矩形/中心点/visible），按名字精确点击控件，不必从截图估坐标。
 - **vm_status.foregroundWindow**：操作前确认目标窗口。
 - README 增「用 vm_ui 定位控件」与「输入与关闭的硬规则」。

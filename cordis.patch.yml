@@ -2,4 +2,6 @@
     - id: vm-tester
       name: 'dsh-vm-tester'
       config:
-        tunnelUrl: 'http://127.0.0.1:8890'
+        tunnelUrl: 'http://127.0.0.1:8890'
+        # 严格像素模式：true 时只用「截图 + 键鼠」，禁用 vm_ui / 前台窗口标题（严格黑盒审计）
+        strictPixelOnly: false
