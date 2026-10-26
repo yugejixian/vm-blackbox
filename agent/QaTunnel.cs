@@ -180,7 +180,10 @@ namespace QaTunnel
                                     }
                                 case "KEY":
                                     {
-                                        bool ok = PressCombo(parts.Length > 2 ? parts[2] : "");
+                                        string combo = parts.Length > 2 ? parts[2] : "";
+                                        string refused = DangerousKeyCheck(combo);
+                                        if (refused != null) { SendErr(ns, id, refused); break; }
+                                        bool ok = PressCombo(combo);
                                         SendOk(ns, id, ok ? "{}" : "{\"err\":\"unknown key\"}");
                                         break;
                                     }
@@ -553,6 +556,26 @@ namespace QaTunnel
             {"win",0x5B},{"lwin",0x5B}
         };
 
+        // 危险按键防护：桌面/任务栏上按 Alt+F4 会弹出「关闭 Windows」，测试员可能误关机。
+        private static string DangerousKeyCheck(string combo)
+        {
+            if (string.IsNullOrEmpty(combo)) return null;
+            string c = combo.ToLowerInvariant().Replace(" ", "");
+            if (c != "alt+f4") return null;
+            IntPtr fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return "refused: no foreground window";
+            var cls = new StringBuilder(256);
+            GetClassName(fg, cls, cls.Capacity);
+            string clsName = cls.ToString();
+            if (clsName == "Progman" || clsName == "WorkerW" || clsName == "Shell_TrayWnd" || clsName == "NotifyIconOverflowWindow")
+                return "refused: Alt+F4 on the desktop/taskbar would open the shutdown dialog";
+            var title = new StringBuilder(256);
+            GetWindowText(fg, title, title.Capacity);
+            if (title.ToString().Length == 0)
+                return "refused: foreground window has no title (likely the desktop)";
+            return null;
+        }
+
         private static bool PressCombo(string combo)
         {
             if (string.IsNullOrEmpty(combo)) return false;
@@ -609,6 +632,8 @@ namespace QaTunnel
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
         [DllImport("imm32.dll")] private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);

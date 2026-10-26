@@ -24,6 +24,17 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 
 虚拟机主动外连宿主，**不需要给虚拟机开入站端口**。
 
+## 危险按键防护
+
+测试员可能会误按 **桌面上 Alt+F4** —— 那会弹出「关闭 Windows」，等于把虚拟机直接关掉。
+代理会拒绝这类操作并返回明确错误：
+
+```
+vm_key("alt+f4")  ->  refused: Alt+F4 on the desktop/taskbar would open the shutdown dialog
+```
+
+正常窗口（记事本、浏览器等）上的 Alt+F4 仍然允许关闭。
+
 ## 自动清理（默认开启）
 
 截图不会无限增长，三层规则：
