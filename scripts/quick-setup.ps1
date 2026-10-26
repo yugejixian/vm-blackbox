@@ -38,6 +38,7 @@ param(
   [string]$VBoxManage = 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe',
   [string]$ShotsDir = '',
   [switch]$NoViewer   # 默认启动实时画面看板；加 -NoViewer 可关掉
+  ,[switch]$NoStartVm   # 虚拟机没开时自动开（-NoStartVm 关闭该行为）
 )
 
 # 原生命令的 stderr 不应打断脚本，统一用 $LASTEXITCODE 判断
@@ -67,7 +68,18 @@ Write-Ok '文件与环境正常'
 # ---------- 1. 虚拟机状态 ----------
 $running = (& $VBoxManage list runningvms 2>$null | Out-String)
 if ($running -notmatch [regex]::Escape($VmName)) {
-  Fail "虚拟机 `"$VmName`" 没有在运行。先在 VirtualBox 里开机并登录桌面，再重跑本脚本。"
+  if ($NoStartVm) {
+    Fail "虚拟机 `"$VmName`" 没有在运行。去掉 -NoStartVm 让脚本自动开机，或先在 VirtualBox 里启动。"
+  }
+  Write-Step "虚拟机未运行，正在后台开机（headless）"
+  & $VBoxManage startvm $VmName --type headless 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail "虚拟机启动失败，请在 VirtualBox 里手动启动后再重跑" }
+  for ($w = 0; $w -lt 30; $w++) {
+    Start-Sleep -Seconds 2
+    $now = (& $VBoxManage list runningvms 2>$null | Out-String)
+    if ($now -match [regex]::Escape($VmName)) { break }
+  }
+  Write-Ok "虚拟机已启动"
 }
 Write-Ok "虚拟机 $VmName 正在运行"
 
@@ -148,10 +160,23 @@ $boot = Invoke-Guest 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 if ($boot -notmatch 'startup=ok') { Fail "创建开机自启失败：$boot" }
 Write-Ok '开机自启已设置'
 
-if (-not $agentRunning) {
-  & $VBoxManage guestcontrol $VmName start --username $GuestUser --password $GuestPass --exe 'C:\qa\QaTunnel.exe' 2>$null | Out-Null
-  Start-Sleep -Seconds 2
-}
+  # 启动代理并确认真的起来了（guestcontrol start 可能静默失败）
+  $psList = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'tasklist | findstr /i QaTunnel')
+  if ($psList -notmatch 'QaTunnel\.exe') {
+    & $VBoxManage guestcontrol $VmName start --username $GuestUser --password $GuestPass --exe 'C:\qa\QaTunnel.exe' 2>$null | Out-Null
+    Start-Sleep -Seconds 2
+    $psList = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'tasklist | findstr /i QaTunnel')
+  }
+  if ($psList -notmatch 'QaTunnel\.exe') {
+    Write-Step "直接启动没成功，尝试通过计划任务启动"
+    $null = Invoke-Guest 'C:\Windows\System32\schtasks.exe' @('/Run', '/TN', 'QaTunnel')
+    Start-Sleep -Seconds 3
+    $psList = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'tasklist | findstr /i QaTunnel')
+  }
+  if ($psList -notmatch 'QaTunnel\.exe') {
+    Fail "代理没有启动成功。请在虚拟机里手动运行 C:\qa\QaTunnel.exe 后重跑本脚本。"
+  }
+  Write-Ok '代理已启动'
 
 if (-not $ShotsDir) { $ShotsDir = Join-Path $env:LOCALAPPDATA 'dsh-vm-tester\shots' }
 

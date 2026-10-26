@@ -98,7 +98,7 @@ namespace QaTunnel
                             switch (op)
                             {
                                 case "CURSOR": { POINT cp; if (GetCursorPos(out cp)) SendOk(ns, id, "{\"x\":" + cp.X + ",\"y\":" + cp.Y + "}"); else SendErr(ns, id, "cursor failed"); break; }
-                                case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\",\"fg\":\"" + FgTitle() + "\"}"); break;
+                                case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\",\"fg\":\"" + FgTitle() + "\",\"ptr\":\"" + (PtrOk() ? "ok" : "dead") + "\"}"); break;
                                   case "UITREE":
                                       {
                                           int maxDepth = parts.Length > 2 ? int.Parse(parts[2]) : 5;
@@ -171,6 +171,13 @@ namespace QaTunnel
                                         int x = int.Parse(parts[2]); int y = int.Parse(parts[3]);
                                         bool dbl = parts.Length > 4 && parts[4] == "1";
                                         MoveTo(x, y); Thread.Sleep(40);
+                                        // 桌面会话卡死时输入会静默失效：校验指针是否真的到位，否则明确报错
+                                        POINT cp; GetCursorPos(out cp);
+                                        if (Math.Abs(cp.X - x) > 8 || Math.Abs(cp.Y - y) > 8)
+                                        {
+                                            SendErr(ns, id, "pointer does not move: guest desktop session looks hung (cursor stuck at " + cp.X + "," + cp.Y + "). Reboot the VM and retry.");
+                                            break;
+                                        }
                 EnsureForegroundAt(x, y); // 非前台窗口的第一下点击只会激活窗口，先激活再点
                 Click(dbl);
                                         _lastClickX = x; _lastClickY = y;
@@ -349,6 +356,18 @@ namespace QaTunnel
                 return t.Replace("\\", "/").Replace("\"", "'");
             }
             catch { return ""; }
+        }
+
+        // 指针设备健康检查：桌面会话卡死时 SetCursorPos 会失败，此时点击/输入都不可靠
+        private static bool PtrOk()
+        {
+            try
+            {
+                POINT p;
+                if (!GetCursorPos(out p)) return false;
+                return SetCursorPos(p.X, p.Y);
+            }
+            catch { return false; }
         }
 
         private static int W() { return GetSystemMetrics(0); }
@@ -821,6 +840,7 @@ namespace QaTunnel
 
         [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
         [DllImport("user32.dll")] private static extern bool SetProcessDPIAware();
         [DllImport("user32.dll")] private static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
         [DllImport("user32.dll")] private static extern int GetSystemMetrics(int i);

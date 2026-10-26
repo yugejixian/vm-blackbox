@@ -62,6 +62,23 @@ config:
 
 **无论哪种模式，判定都必须由截图支撑**：`vm_ui` 只用来「找按钮在哪」，不能拿来当「功能是否正常」的证据。
 
+## 故障排查：画面冻结 / 输入失效
+
+症状：**截图还在更新（或停在某一刻）、鼠标键盘完全无反应**，但虚拟机里 PowerShell 还能执行。
+这通常是**访客桌面会话卡死**（常见于：虚拟机保存状态后恢复、全屏程序崩溃、来回切换 VirtualBox 窗口/显示模式）。
+
+自查：
+
+```jsonc
+vm_status()  // -> pointerOk: false，或者
+vm_click({x:100,y:100})  // -> error: "pointer does not move: guest desktop session looks hung ..."
+```
+
+处理：**重启虚拟机**（`VBoxManage controlvm <vm> reset` 或 guest 里 `shutdown /r /f /t 5`）。
+重启后 `pointerOk` 恢复 `true`，点击即可用。
+
+> 建议：测试期间**别用「保存状态」**暂停虚拟机，改用关机；也尽量别在宿主上打开 VirtualBox 图形窗口反复切显示模式。
+
 ## 输入与关闭的硬规则（实测踩坑总结）
 
 > 这些是真实首次使用时踩到的坑，按这三条做能省很多时间。

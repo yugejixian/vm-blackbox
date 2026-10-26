@@ -70,7 +70,7 @@ export function apply(ctx, config) {
     name: 'vm_status',
     description:
       'Check whether the guest VM is reachable; report screen size, logged-in user and the FOREGROUND WINDOW TITLE. ' +
-      'Call this before any other vm_* tool; when it reports connected=false the tunnel or the guest agent is not running. ' + 'Before vm_type/vm_click, use foregroundWindow to confirm the target window.',
+      'Call this before any other vm_* tool; when it reports connected=false the tunnel or the guest agent is not running. ' + 'Before vm_type/vm_click, use foregroundWindow to confirm the target window. ' + 'pointerOk=false means the guest desktop session is hung (cursor stuck): ask the user to reboot the VM.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     output: {
       schema: {
@@ -80,6 +80,7 @@ export function apply(ctx, config) {
           width: { type: 'number' },
           height: { type: 'number' },
           user: { type: 'string' },
+          pointerOk: { type: 'boolean' },
           error: { type: 'string' },
         },
         required: ['connected'],
@@ -98,7 +99,7 @@ export function apply(ctx, config) {
         return { connected: false, error: 'tunnel host has no guest session' }
       }
       const info = await requestJson('/info')
-      const base = { connected: true, width: info.w, height: info.h, user: info.user }
+      const base = { connected: true, width: info.w, height: info.h, user: info.user, pointerOk: info.ptr !== 'dead' }
       if (!strictPixelOnly) base.foregroundWindow = info.fg || ''
       return base
     },

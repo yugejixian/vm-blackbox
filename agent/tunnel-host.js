@@ -402,11 +402,14 @@ http.createServer(async (req, res) => {
         return;
       }
       case '/click': {
-        const x = parseInt(u.searchParams.get('x'), 10);
-        const y = parseInt(u.searchParams.get('y'), 10);
-        await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
-        if (Number.isFinite(x) && Number.isFinite(y)) lastClick = { x, y };
-        res.end('{"ok":true}');
+        try {
+          const x = parseInt(u.searchParams.get('x'), 10);
+          const y = parseInt(u.searchParams.get('y'), 10);
+          await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
+          if (Number.isFinite(x) && Number.isFinite(y)) lastClick = { x, y };
+          res.setHeader('Content-Type', 'application/json');
+          res.end('{"ok":true}');
+        } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
         return;
       }
       case '/type-secret': {
