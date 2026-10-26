@@ -26,6 +26,7 @@ namespace QaTunnel
         // 敏感区域：SECRET 操作后自动把焦点控件遮蔽一段时间，防止密码进截图。
         private static List<Rectangle> _secretMasks = new List<Rectangle>();
         private static long _secretUntilTicks = 0;
+        private static IntPtr _secretHwnd = IntPtr.Zero; // SECRET 时的前台窗口：窗口一关/切走就解除遮蔽
         private static Mutex _singleInstance; // 持有到进程退出，防止被 GC 回收后锁失效
 
         private static void Main(string[] args)
@@ -102,11 +103,21 @@ namespace QaTunnel
                                         string txt = Encoding.UTF8.GetString(Convert.FromBase64String(parts[2]));
                                         Rectangle fr = FocusRect();
                                         _secretMasks = new List<Rectangle>();
+                                        int sw = Math.Max(1, GetSystemMetrics(0)), sh = Math.Max(1, GetSystemMetrics(1));
+                                        // Chromium/Electron 的 UIA 焦点有时是整个文档 —— 面积过大时降级为点击点附近的条带
+                                        if (!fr.IsEmpty && (long)fr.Width * fr.Height > (long)sw * sh / 2) {
+                                            POINT cp; int px = sw / 2, py = sh / 2;
+                                            if (GetCursorPos(out cp)) { px = cp.X; py = cp.Y; }
+                                            fr = new Rectangle(0, Math.Max(0, py - 40), sw, 90);
+                                        }
                                         if (!fr.IsEmpty) {
                                             _secretMasks.Add(fr);
                                             var wr = WindowRect(GetForegroundWindow());
                                             if (!wr.IsEmpty) _secretMasks.Add(new Rectangle(wr.X, wr.Y, wr.Width, Math.Min(56, wr.Height)));
                                             _secretUntilTicks = DateTime.Now.AddSeconds(180).Ticks;
+                                            var c = new POINT { X = fr.X + fr.Width / 2, Y = fr.Y + fr.Height / 2 };
+                                            _secretHwnd = WindowFromPoint(c);
+                                            if (_secretHwnd != IntPtr.Zero) _secretHwnd = GetAncestor(_secretHwnd, 2);
                                         }
                                         TypeText(txt);
                                         var parts2 = new List<string>();
@@ -114,6 +125,17 @@ namespace QaTunnel
                                         SendOk(ns, id, "{\"masked\":" + (_secretMasks.Count == 0 ? "false" : "true") + ",\"masks\":[" + string.Join(",", parts2.ToArray()) + "]}");
                                         break;
                                     }
+                                case "MASKS":
+                                    {
+                                        var ms = new List<string>();
+                                        if (SecretMaskStillValid()) foreach (var m in _secretMasks) ms.Add("[" + m.X + "," + m.Y + "," + m.Width + "," + m.Height + "]");
+                                        SendOk(ns, id, "{\"masks\":[" + string.Join(",", ms.ToArray()) + "]}");
+                                        break;
+                                    }
+                                case "CLEARMASKS":
+                                    _secretMasks.Clear(); _secretHwnd = IntPtr.Zero; _secretUntilTicks = 0;
+                                    SendOk(ns, id, "{\"cleared\":true}");
+                                    break;
                                 case "SHOT":
                                     {
                                         int q = parts.Length > 2 ? int.Parse(parts[2]) : 80;
@@ -127,7 +149,8 @@ namespace QaTunnel
                                                 && mw > 0 && mh > 0)
                                                 masks.Add(new Rectangle(mx, my, mw, mh));
                                         }
-                                        if (DateTime.Now.Ticks < _secretUntilTicks) masks.AddRange(_secretMasks);
+                                        if (SecretMaskStillValid()) masks.AddRange(_secretMasks);
+                            else { _secretMasks.Clear(); _secretHwnd = IntPtr.Zero; }
                                         byte[] jpg = CaptureJpeg(q, ruler, masks);
                                         byte[] head = Encoding.ASCII.GetBytes(id + " OK " + jpg.Length + "\n");
                                         ns.Write(head, 0, head.Length);
@@ -399,6 +422,21 @@ namespace QaTunnel
             catch { }
         }
 
+        private static bool SecretMaskStillValid()
+        {
+            if (_secretMasks.Count == 0) return false;
+            if (DateTime.Now.Ticks >= _secretUntilTicks) return false;
+            if (_secretHwnd == IntPtr.Zero) return true;
+            if (!IsWindow(_secretHwnd)) return false; // 目标窗口已销毁
+            // 遮罩中心点下面的窗口换了（用户切走/关窗）→ 立即解除
+            Rectangle r0 = _secretMasks[0];
+            var c = new POINT { X = r0.X + r0.Width / 2, Y = r0.Y + r0.Height / 2 };
+            IntPtr under = WindowFromPoint(c);
+            if (under != IntPtr.Zero) under = GetAncestor(under, 2);
+            if (under != IntPtr.Zero && under != _secretHwnd) return false;
+            return true;
+        }
+
         private static void Click(bool dbl)
         {
             SendMouse(MOUSEEVENTF_LEFTDOWN, 0, 0, 0); Thread.Sleep(30);
@@ -570,6 +608,7 @@ namespace QaTunnel
         [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(POINT p);
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
         [DllImport("imm32.dll")] private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);

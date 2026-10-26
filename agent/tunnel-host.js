@@ -161,6 +161,15 @@ async function overlayCursor(buf, quality, maskTokens) {
   } catch (e) { return buf; }
 }
 
+async function currentMaskTokens() {
+  try {
+    const r = await call('MASKS', [], 800);
+    const o = JSON.parse(r);
+    if (Array.isArray(o.masks)) return o.masks.map((m) => m.join(','));
+  } catch (e) { }
+  return liveMaskTokens;
+}
+
 async function hostShot(quality, persist, maskTokens) {
   fs.mkdirSync(SHOTS, { recursive: true });
   const stamp = Date.now() + '-' + (shotSeq++);
@@ -201,6 +210,17 @@ http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
   try {
     switch (u.pathname) {
+      case '/masks/clear': {
+        try {
+          activeMasks.length = 0;
+          liveMaskTokens = [];
+          staleUntil = 0;
+          await call('CLEARMASKS', []);
+          res.setHeader('Content-Type', 'application/json');
+          res.end('{"cleared":true}');
+        } catch (e) { res.statusCode = 500; res.end(String(e.message)); }
+        return;
+      }
       case '/status':
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ connected: !!sock, pending: pending.size }));
@@ -301,7 +321,7 @@ http.createServer(async (req, res) => {
         const activeTokens = liveMaskTokens();
         const allTokens = maskTokens.concat(activeTokens);
         const flatMasks = allTokens.reduce((acc, t) => { acc.push(...t.split(',')); return acc; }, []);
-        const shotArgs = [String(q), 'ruler', ...flatMasks];
+        const shotArgs = [String(q), 'ruler']; // 遮罩由代理按窗口生命周期处理
         if (src !== 'host') {
           try { buf = await call('SHOT', shotArgs, 8000); } catch (e) { buf = null; }
         }
@@ -317,7 +337,7 @@ http.createServer(async (req, res) => {
           if (shouldProbe) {
             lastProbeAt = Date.now();
             try {
-              const r = await hostShot(q, false, allTokens);
+              const r = await hostShot(q, false, await currentMaskTokens());
               const hh = sha1(r.buf);
               const hostChanged = !lastHostHash || hh !== lastHostHash;
               lastHostHash = hh;
@@ -336,7 +356,7 @@ http.createServer(async (req, res) => {
         }
         if (!buf) {
           via = 'host';
-          const r = await hostShot(q, false, allTokens);
+          const r = await hostShot(q, false, await currentMaskTokens());
           buf = r.buf;
           file = r.file;
           log('guest capture failed, used host framebuffer');
