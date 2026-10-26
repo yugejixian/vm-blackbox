@@ -39,7 +39,7 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 
 ## 快速开始
 
-**第一次用？直接看 [docs/QUICKSTART.md](docs/QUICKSTART.md)** —— 保姆级流程，从装插件到第一次截图点击，含常见问题排查表。
+**第一次用？一条命令部署：`scripts/quick-setup.ps1`（见 [docs/SHARE.md](docs/SHARE.md)）；完整手动流程看 [docs/QUICKSTART.md](docs/QUICKSTART.md)** —— 保姆级流程，从装插件到第一次截图点击，含常见问题排查表。
 
 ## 安装
 

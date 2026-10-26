@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.4 — 2026-10-26
+
+### Added
+- `scripts/quick-setup.ps1`：一键部署（检查环境 → 投递访客代理 → 设置开机自启 → 启动宿主隧道 → 等待连通）。
+- `docs/SHARE.md`：分享版安装与配置说明（三条不经过市场的安装途径）。
+- `agent/mk-agent-startup.ps1`：在访客里创建代理的开机自启快捷方式。
+
+### Fixed
+- **隧道在插件包内无法启动**：根 `package.json` 声明了 `type: module`，导致 `agent/tunnel-host.js`（CommonJS）报 `require is not defined`。新增 `agent/package.json` 将 agent 目录标记为 CommonJS。
+- 部署脚本在代理已运行时重复启动第二个实例；现在会比对版本后跳过。
+- 部署脚本对「虚拟机刚恢复/刚启动、访客未就绪」的情况增加等待与重试。
+
+
 ## 0.1.2 — 2026-10-26
 
 ### Added

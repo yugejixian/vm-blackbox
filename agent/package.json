@@ -1,0 +1,6 @@
+{
+  "name": "dsh-vm-tester-agent",
+  "private": true,
+  "type": "commonjs",
+  "description": "Guest agent and host tunnel for dsh-vm-tester (CommonJS scope marker)."
+}
