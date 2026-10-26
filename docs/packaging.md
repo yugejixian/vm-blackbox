@@ -32,7 +32,7 @@
 1. VirtualBox 7.x（Windows 宿主已验证）
 2. 官方 Windows 11 ISO（中文专业版）
 3. DSH（本测试台寄生在 DSH 的插件机制上）
-4. Python/Node 不必须——除 `tunnel-host.js` 需要 Node（本机用 `D:\nodejs\node.exe`）
+4. Python/Node 不必须——除 `tunnel-host.js` 需要 Node（本机用 `node`）
 
 ## 四、打包时最容易翻车的三处
 

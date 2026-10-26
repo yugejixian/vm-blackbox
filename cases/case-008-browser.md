@@ -4,7 +4,7 @@
 - 桌面干净，没有打开的窗口。
 - 桌面上有一个文件 `qa-test-page.html`（白色齿轮图标或浏览器图标，不是快捷方式）。
   基线快照 `zh-cn-clean` 里已经包含它，不需要手工投递；如果缺失，按 handoff「投递被测文件」用
-  `VBoxManage guestcontrol copyto` 从 `D:\null_work\assets\qa-test-page.html` 补。
+  `VBoxManage guestcontrol copyto` 从 `<工作目录>/assets\qa-test-page.html` 补。
 - 浏览器（Edge）当前没有打开。
 
 ## 步骤

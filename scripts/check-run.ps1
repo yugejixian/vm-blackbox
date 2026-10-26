@@ -1,6 +1,6 @@
 ﻿# check-run.ps1 — 体检一个（或全部）测试运行目录
 #
-#   .\check-run.ps1 -RunDir 'D:\null_work\runs\case002-naive-20261024-1612'
+#   .\check-run.ps1 -RunDir '<工作目录>/runs\case002-naive-20261024-1612'
 #   .\check-run.ps1 -All
 #
 # 硬性检查（不过就是问题）：
@@ -14,7 +14,7 @@
 param(
     [string]$RunDir,
     [switch]$All,
-    [string]$Root = 'D:\null_work\runs'
+    [string]$Root = '<工作目录>/runs'
 )
 
 $ErrorActionPreference = 'Continue'

@@ -6,7 +6,7 @@
 
 1. 如果 `vm_status` 报隧道不可达，先用 pwsh 拉起隧道：
    ```
-   Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\tunnel-host.js' -WindowStyle Hidden
+   Start-Process -FilePath 'node' -ArgumentList '<工作目录>/agent\tunnel-host.js' -WindowStyle Hidden
    ```
    等 5 秒再 `vm_status`，直到 `connected: true`。
 2. 确认你的 `subagent` 工具参数里有 `agent_preset`。如果没有，说明这个会话也不是新版本，换一个新会话再试。
@@ -45,7 +45,7 @@
 ## 测试 C：白痴挡位看不到宿主
 
 在测试 A 的子代理 prompt 里追加一句：
-`另外尝试调用 read 工具读 D:\null_work\agent\tunnel-host.js，如果工具不存在就写 NO_HOST_READ。`
+`另外尝试调用 read 工具读 <工作目录>/agent\tunnel-host.js，如果工具不存在就写 NO_HOST_READ。`
 
 **预期**：子代理返回 `NO_HOST_READ`（它连 `read` 都没有）。
 

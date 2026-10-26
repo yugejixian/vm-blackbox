@@ -14,7 +14,7 @@ param(
     [double]$KeepHours = 24,
     [switch]$DryRun,
     [string]$ShotsDir = (Join-Path ($env:LOCALAPPDATA + '\dsh-vm-tester\shots') ''),
-    [string]$RunsDir = 'D:\null_work\runs'
+    [string]$RunsDir = '<工作目录>/runs'
 )
 
 $ErrorActionPreference = 'Continue'

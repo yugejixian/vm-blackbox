@@ -13,14 +13,15 @@ const { spawn } = require('child_process');
 
 const TCP_PORT = 8801;
 const HTTP_PORT = 8890;
-const SHOTS = 'D:\\null_work\\shots';
-const AGENT_DIR = 'D:\\null_work\\agent';
-const VAULT_GET = AGENT_DIR + '\\vault-get.ps1';
+const os = require('os');
+const SHOTS = process.env.QA_SHOTS_DIR || path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'dsh-vm-tester', 'shots');
+const AGENT_DIR = process.env.QA_AGENT_DIR || __dirname;
+const VAULT_GET = path.join(AGENT_DIR, 'vault-get.ps1');
 const PS = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
-const VBOX = 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
-const VM = 'qa-win11-zh';
-const OVERLAY = 'D:\\null_work\\agent\\RulerOverlay.exe';
+const VBOX = process.env.QA_VBOXMANAGE || 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
+const VM = process.env.QA_VM_NAME || 'qa-win11-zh';
+const OVERLAY = path.join(AGENT_DIR, 'RulerOverlay.exe');
 
 let sock = null;
 let buffer = Buffer.alloc(0);

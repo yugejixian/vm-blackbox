@@ -1,6 +1,6 @@
 # 虚拟机黑盒测试台 — 交接说明（中文镜像版）
 
-> 本文档是作者本机的操作记录。路径里的 `D:\null_work\...` 属于作者环境，请替换成你的仓库路径；脚本在 `scripts/`，插件包在仓库根目录。
+> 本文档是作者本机的操作记录。路径里的 `<工作目录>\...` 属于作者环境，请替换成你的仓库路径；脚本在 `scripts/`，插件包在仓库根目录。
 
 ## 现状（2026-10-24 下午）
 
@@ -24,7 +24,7 @@
 ```
 & 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' guestcontrol qa-win11-zh copyto `
   --username qa --password '<访客密码>' `
-  'D:\null_work\installers\Everything-1.4.1.1026.x64-Setup.exe' `
+  '<工作目录>/installers\Everything-1.4.1.1026.x64-Setup.exe' `
   'C:\Users\qa\Desktop\Everything-Setup.exe'
 ```
 
@@ -41,7 +41,7 @@
 & 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' startvm qa-win11-zh --type headless
 
 # 2) 确认隧道进程在跑（不在就拉起）
-Start-Process -FilePath 'D:\nodejs\node.exe' -ArgumentList 'D:\null_work\agent\tunnel-host.js' -WindowStyle Hidden
+Start-Process -FilePath 'node' -ArgumentList '<工作目录>/agent\tunnel-host.js' -WindowStyle Hidden
 
 # 3) 等 60–90 秒，vm_status 应为 connected:true
 ```
@@ -241,14 +241,14 @@ hex: e9bb91 e79b92 e6b58b e8af95 20 41 42 43 2d 31 32 33 ...
 3. 返回后先用 `read_image` 逐张核对它引用的截图。
 4. **再调子会话的工具调用日志做全量核对**：把它的实际动作序列和报告里写的步骤对一遍，找出报告没写的动作（误点、多余窗口、未声明的副作用）。报告是摘要，日志才是事实。
 5. 核对完成后才允许做后台诊断。
-6. 报告写 `D:\null_work\runs\<run-id>\report.md`。
+6. 报告写 `<工作目录>/runs\<run-id>\report.md`。
 7. **收尾前跑一次体检**：`& 'scripts\check-run.ps1' -All`
    - 硬性：报告存在、有明确结论（PASS/FAIL/被阻断）、**每个引用的截图都在磁盘上**
    - 软性：缺「步骤/可疑项/取证」措辞、磁盘上有没被引用的孤儿图
-   - 实测价值：第一次跑就在 `case002b` 里抓到一张引用了但不存在的截图——那张收尾图其实在全局 `D:\null_work\shots\` 里，没归档进运行目录。收尾截图也要落进 `runs\<run-id>\shots\`。
+   - 实测价值：第一次跑就在 `case002b` 里抓到一张引用了但不存在的截图——那张收尾图其实在全局 `<工作目录>/shots\` 里，没归档进运行目录。收尾截图也要落进 `runs\<run-id>\shots\`。
 8. 给测试员的 prompt 里明确要求：**每步截图后立刻把路径写进记录**，不要事后凭记忆引用（上一轮出现过路径复用、步骤缺独立截图）。
 
-## 用例套件（`D:\null_work\cases\`）
+## 用例套件（`<工作目录>\cases\`）
 
 | 用例 | 场景 | 文件 | 备注 |
 |---|---|---|---|
@@ -271,5 +271,5 @@ hex: e9bb91 e79b92 e6b58b e8af95 20 41 42 43 2d 31 32 33 ...
 - **物理键盘打不出双引号**；带空格的路径改用 PowerShell 单引号写法。
 - **`C:\` 根目录只能建目录、不能建文件**；临时脚本放 `%TEMP%`。
 - **宿主 Defender 的 AMSI 会拦 `iex(iwr …)` 模式**；改成先 `curl -o` 落盘，再 `powershell -File` 执行。
-- 宿主文件服务 `0.0.0.0:8800`（`python -m http.server`，目录 `D:\null_work\agent`）只在装/更新代理时需要，平时可以关。
+- 宿主文件服务 `0.0.0.0:8800`（`python -m http.server`，目录 `<工作目录>/agent`）只在装/更新代理时需要，平时可以关。
 - 提权配方：`win+r` → `powershell -c "Start-Process cmd -Verb RunAs"` → 物理键盘 `Tab Tab 空格`（焦点顺序 No → Show more details → Yes）。

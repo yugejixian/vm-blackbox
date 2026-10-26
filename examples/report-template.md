@@ -1,7 +1,7 @@
 # <用例编号> 执行报告
 
 - **Run ID**：`<caseXXX-naive-YYYYMMDD-HHMM>`
-- **用例**：`D:\null_work\cases\case-XXX-*.md`
+- **用例**：`<工作目录>\cases\case-XXX-*.md`
 - **挡位**：`vm-naive` / `vm-smart`（子代理 `<id>`）
 - **快照**：`zh-cn-clean`（UUID `<前 8 位>`），已回滚
 - **时间**：`YYYY-MM-DD HH:MM` 回滚，`HH:MM–HH:MM` 执行与复核（Asia/Shanghai）

@@ -1,15 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — 2026-10-26
 
 ### Added
-- `docs/QUICKSTART.md`：保姆级部署流程（装插件 → 准备虚拟机 → 部署代理 → 启动隧道 → 冒烟测试 → 排错）。
-- npm 包现在包含 `agent/`、`scripts/`、`docs/`、`assets/`，从 npm 安装也能拿到隧道与访客代理。
+- `docs/QUICKSTART.md`：保姆级部署流程（装插件 → 准备虚拟机 → 部署访客代理 → 启动宿主隧道 → 冒烟测试 → 排错表）。
+- npm 包自包含：包含 `agent/`、`scripts/`、`docs/`、`cases/`、`assets/`，从 npm 安装即可完成全部部署。
 
-### Changed
-- 默认截图目录不再写死 `D:\null_work\shots`，改为 `%LOCALAPPDATA%\dsh-vm-tester\shots`。
-- `cordis.patch.yml` 不再写死 `shotsDir`（留空即用默认值）。
-- `scripts/build-vm.ps1` 的 `AgentDir`/`BaseFolder` 改为相对仓库与用户目录，换机器不用改脚本。
+### Improved
+- 截图目录默认使用 `%LOCALAPPDATA%\dsh-vm-tester\shots`（可用配置项 `shotsDir` 覆盖）。
+- `cordis.patch.yml` 的 `shotsDir` 改为可选。
+- 隧道与构建脚本的路径改为环境变量 / 相对目录，换机器无需修改脚本。
 
 ## 0.1.1 — 2026-10-25
 

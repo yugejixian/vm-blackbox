@@ -78,7 +78,7 @@ dsh plugin add github:yugejixian/vm-blackbox
   name: 'dsh-vm-tester'
   config:
     tunnelUrl: 'http://127.0.0.1:8890'   # tunnel-host.js 的 HTTP 地址
-    shotsDir: 'D:\null_work\shots'        # 截图落盘目录（证据）
+    shotsDir: 'C:\Users\你\Pictures\vmshots'  # 截图落盘目录（留空则用默认值）
 ```
 
 ## 仓库结构
