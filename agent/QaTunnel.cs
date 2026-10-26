@@ -12,6 +12,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Automation;
 using System.Threading;
 
 namespace QaTunnel
@@ -98,6 +99,13 @@ namespace QaTunnel
                             {
                                 case "CURSOR": { POINT cp; if (GetCursorPos(out cp)) SendOk(ns, id, "{\"x\":" + cp.X + ",\"y\":" + cp.Y + "}"); else SendErr(ns, id, "cursor failed"); break; }
                                 case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\",\"fg\":\"" + FgTitle() + "\"}"); break;
+                                  case "UITREE":
+                                      {
+                                          int maxDepth = parts.Length > 2 ? int.Parse(parts[2]) : 5;
+                                          int maxNodes = parts.Length > 3 ? int.Parse(parts[3]) : 300;
+                                          SendOk(ns, id, BuildUiTree(maxDepth, maxNodes));
+                                          break;
+                                      }
                                 case "SECRET":
                                     {
                                         string txt = Encoding.UTF8.GetString(Convert.FromBase64String(parts[2]));
@@ -216,6 +224,115 @@ namespace QaTunnel
             byte[] b = Encoding.UTF8.GetBytes(id + " ERR " + msg + "\n");
             ns.Write(b, 0, b.Length);
             ns.Flush();
+        }
+
+        // ---------- UIA 元素树（vm_ui）：让调用方按名字/类型精确点，而不是凭截图估坐标 ----------
+        private static string JsonEscape(string s)
+        {
+            if (s == null) return "";
+            var sb = new StringBuilder(s.Length + 8);
+            foreach (char c in s)
+            {
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < ' ') sb.Append(' '); else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        private class UiNode { public AutomationElement El; public int Depth; }
+
+        private static string ControlTypeName(AutomationElement el)
+        {
+            try { return el.Current.ControlType.ProgrammaticName.Replace("ControlType.", ""); }
+            catch { return "Unknown"; }
+        }
+
+        private static string DescribeUiElement(AutomationElement el, int depth)
+        {
+            try
+            {
+                var c = el.Current;
+                var r = c.BoundingRectangle;
+                // UIA 对隐藏元素会返回无效矩形（double 极值/负数），统一归零，避免调用方点到屏幕外
+                double rx = r.X, ry = r.Y, rw = r.Width, rh = r.Height;
+                bool visible = rw > 0 && rh > 0 && !double.IsInfinity(rx) && !double.IsInfinity(ry) && !double.IsInfinity(rw) && !double.IsInfinity(rh);
+                if (!visible) { rx = 0; ry = 0; rw = 0; rh = 0; }
+                var sb = new StringBuilder(160);
+                sb.Append("{\"d\":").Append(depth);
+                sb.Append(",\"type\":\"").Append(JsonEscape(ControlTypeName(el))).Append("\"");
+                sb.Append(",\"name\":\"").Append(JsonEscape(c.Name)).Append("\"");
+                sb.Append(",\"id\":\"").Append(JsonEscape(c.AutomationId)).Append("\"");
+                sb.Append(",\"cls\":\"").Append(JsonEscape(c.ClassName)).Append("\"");
+                sb.Append(",\"x\":").Append((int)rx).Append(",\"y\":").Append((int)ry);
+                sb.Append(",\"w\":").Append((int)rw).Append(",\"h\":").Append((int)rh);
+                sb.Append(",\"cx\":").Append((int)(rx + rw / 2)).Append(",\"cy\":").Append((int)(ry + rh / 2));
+                sb.Append(",\"visible\":").Append(visible ? "true" : "false");
+                sb.Append(",\"enabled\":").Append(c.IsEnabled ? "true" : "false");
+                sb.Append(",\"offscreen\":").Append(c.IsOffscreen ? "true" : "false");
+                sb.Append("}");
+                return sb.ToString();
+            }
+            catch { return null; }
+        }
+
+        private static string BuildUiTree(int maxDepth, int maxNodes)
+        {
+            var sb = new StringBuilder(4096);
+            IntPtr hwnd = GetForegroundWindow();
+            string title = "";
+            if (hwnd != IntPtr.Zero)
+            {
+                var t = new StringBuilder(512);
+                GetWindowText(hwnd, t, t.Capacity);
+                title = t.ToString();
+            }
+            sb.Append("{\"window\":\"").Append(JsonEscape(title)).Append("\",\"elements\":[");
+            int count = 0;
+            if (hwnd != IntPtr.Zero)
+            {
+                try
+                {
+                    var root = AutomationElement.FromHandle(hwnd);
+                    if (root != null)
+                    {
+                        var queue = new Queue<UiNode>();
+                        queue.Enqueue(new UiNode { El = root, Depth = 0 });
+                        bool first = true;
+                        while (queue.Count > 0 && count < maxNodes)
+                        {
+                            var node = queue.Dequeue();
+                            string entry = DescribeUiElement(node.El, node.Depth);
+                            if (entry != null)
+                            {
+                                if (!first) sb.Append(",");
+                                sb.Append(entry);
+                                first = false;
+                                count++;
+                            }
+                            if (node.Depth >= maxDepth) continue;
+                            AutomationElementCollection kids = null;
+                            try { kids = node.El.FindAll(TreeScope.Children, Condition.TrueCondition); }
+                            catch { }
+                            if (kids != null)
+                            {
+                                foreach (AutomationElement k in kids) queue.Enqueue(new UiNode { El = k, Depth = node.Depth + 1 });
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            sb.Append("],\"count\":").Append(count).Append("}");
+            return sb.ToString();
         }
 
         // 前台窗口标题：让测试员知道当前焦点在哪（避免在错误的窗口里输入）

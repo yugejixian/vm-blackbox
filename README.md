@@ -24,6 +24,25 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 
 虚拟机主动外连宿主，**不需要给虚拟机开入站端口**。
 
+### 用 vm_ui 代替肉眼估坐标（推荐）
+
+```jsonc
+// 1) 确认前台窗口
+vm_status()                       // -> foregroundWindow: "Calculator"
+
+// 2) 取元素树，按名字/ID 找控件
+vm_ui({ depth: 6, maxNodes: 200 })
+// elements: [{ type:"Button", name:"Seven", cx:90, cy:376, visible:true }, ...]
+
+// 3) 直接用树里的 cx/cy 点击
+vm_click({ x: 90, y: 376 })       // 点中 "7"
+```
+
+要点：
+- 过滤 `visible:true` 且 `enabled:true`；隐藏元素会返回 `w/h = 0`。
+- 只覆盖**前台窗口**；要操作别的窗口先点击/`Alt+Tab` 让它到前台。
+- 拿到坐标后窗口若移动，需要重新取树。
+
 ## 输入与关闭的硬规则（实测踩坑总结）
 
 > 这些是真实首次使用时踩到的坑，按这三条做能省很多时间。
@@ -74,12 +93,13 @@ vm_key("alt+f4")  ->  refused: Alt+F4 on the desktop/taskbar would open the shut
 手动清理：`powershell -ExecutionPolicy Bypass -File scripts/clean-shots.ps1`
 安全约束：只删严格命名的自有文件、只处理目录顶层、拒绝系统/用户根目录、非默认目录需显式 `-AllowCustomDir`。
 
-## 八个工具
+## 九个工具
 
 | 工具 | 作用 |
 |---|---|
 | `vm_status` | 隧道是否连通、分辨率、当前登录用户 |
 | `vm_screenshot` | 截当前屏幕；图上带**坐标标尺**（每 200px 标注原生像素）和上次点击的准星 |
+| `vm_ui` | **UI 元素树**（前台窗口）：类型/名称/ID/矩形/中心点，按名字精确点，不用肉眼估坐标 |
 | `vm_click(x,y)` | 左键点击（原生像素坐标） |
 | `vm_type(text)` | 往当前焦点输入文本（支持中文，Unicode 注入） |
 | `vm_type_secret(name)` | 从宿主凭据库注入密码/令牌，**明文不进模型上下文**；注入后相关区域自动遮蔽 |

@@ -242,6 +242,16 @@ http.createServer(async (req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ connected: !!sock, pending: pending.size }));
         return;
+      case '/ui': {
+        try {
+          const depth = parseInt(u.searchParams.get('depth') || '5', 10);
+          const nodes = parseInt(u.searchParams.get('maxNodes') || '300', 10);
+          const r = await call('UITREE', [String(depth), String(nodes)], 20000);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(r);
+        } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
+        return;
+      }
       case '/info': {
         const r = await call('INFO', []);
         res.setHeader('Content-Type', 'application/json');

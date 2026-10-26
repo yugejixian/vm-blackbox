@@ -3,6 +3,11 @@
 ## 0.1.5 — 2026-10-26
 
 ### Added
+- **`vm_ui` 工具**：返回前台窗口的 UI Automation 元素树（类型/名称/AutomationId/矩形/中心点/visible），按名字精确点击，不必肉眼估坐标。
+- `vm_status` 新增 `foregroundWindow`：操作前确认目标窗口。
+- README 增「用 vm_ui 定位控件」「输入与关闭的硬规则」。
+
+### Fixed
 - **实时画面看板默认启动**：`quick-setup.ps1` 部署完成后自动打开；`-NoViewer` 可关闭。
 - **危险按键防护**：桌面/任务栏上的 Alt+F4 会被拒绝（否则会弹「关闭 Windows」误关机）；普通窗口不受影响。
 

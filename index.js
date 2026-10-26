@@ -101,6 +101,39 @@ export function apply(ctx, config) {
   }))
 
   ctx.effect(() => ctx.tools.register({
+    name: 'vm_ui',
+    description:
+      'Return the UI Automation tree of the FOREGROUND window: control types, names, AutomationIds and screen rectangles (with cx/cy click centers). ' +
+      'Use this instead of estimating coordinates from screenshots: find the element by name/type, then vm_click its cx/cy. ' +
+      'Call vm_status first to confirm the foreground window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        depth: { type: 'number', description: 'max tree depth, default 5' },
+        maxNodes: { type: 'number', description: 'max elements returned, default 300' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          window: { type: 'string' },
+          count: { type: 'number' },
+          elements: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        },
+        additionalProperties: true,
+      },
+    },
+    async execute(args) {
+      const depth = Number(args?.depth ?? 5)
+      const maxNodes = Number(args?.maxNodes ?? 300)
+      return requestJson(`/ui?depth=${depth}&maxNodes=${maxNodes}`)
+    },
+    isConcurrencySafe: () => false,
+  }))
+
+  ctx.effect(() => ctx.tools.register({
     name: 'vm_screenshot',
     description:
       'Capture what the guest screen shows right now and return it as an image plus the saved file path. ' +
