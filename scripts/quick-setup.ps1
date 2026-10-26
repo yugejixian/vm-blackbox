@@ -36,7 +36,8 @@ param(
   [Parameter(Mandatory = $true)][string]$GuestUser,
   [Parameter(Mandatory = $true)][string]$GuestPass,
   [string]$VBoxManage = 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe',
-  [string]$ShotsDir = ''
+  [string]$ShotsDir = '',
+  [switch]$NoViewer   # 默认启动实时画面看板；加 -NoViewer 可关掉
 )
 
 # 原生命令的 stderr 不应打断脚本，统一用 $LASTEXITCODE 判断
@@ -213,6 +214,12 @@ try {
 
 
 Write-Host ''
+# ---------- 7. 实时画面看板（可选，不装自启）----------
+$viewerExe = Join-Path $repoRoot 'scripts\VmWatch.exe'
+if (-not $NoViewer -and (Test-Path $viewerExe)) {
+  try { $null = ([wmiclass]'Win32_Process').Create($viewerExe); Write-Ok '已启动实时画面看板（关闭：Esc）' } catch { }
+}
+
 Write-Host '================ 部署完成 ================' -ForegroundColor Cyan
 Write-Host "  虚拟机     : $VmName"
 Write-Host "  访客用户   : $GuestUser"

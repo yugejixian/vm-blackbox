@@ -149,6 +149,7 @@ export function apply(ctx, config) {
       mkdirSync(shotsDir, { recursive: true })
       const path = join(shotsDir, `shot-${Date.now()}.jpg`)
       writeFileSync(path, bytes)
+        pruneShots()
       const attachment = await ctx.attachments.saveImage({ data: bytes, mediaType: 'image/jpeg' })
       return { path, width: info.w, height: info.h, bytes: bytes.length, via, attachment }
     },
