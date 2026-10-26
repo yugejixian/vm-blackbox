@@ -13,7 +13,7 @@
 param(
     [double]$KeepHours = 24,
     [switch]$DryRun,
-    [string]$ShotsDir = 'D:\null_work\shots',
+    [string]$ShotsDir = (Join-Path ($env:LOCALAPPDATA + '\dsh-vm-tester\shots') ''),
     [string]$RunsDir = 'D:\null_work\runs'
 )
 

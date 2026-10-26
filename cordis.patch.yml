@@ -2,5 +2,4 @@
     - id: vm-tester
       name: 'dsh-vm-tester'
       config:
-        tunnelUrl: 'http://127.0.0.1:8890'
-        shotsDir: 'D:\null_work\shots'
+        tunnelUrl: 'http://127.0.0.1:8890'

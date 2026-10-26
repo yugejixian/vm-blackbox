@@ -37,6 +37,10 @@ DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──�
 | `vm_key_basic(key)` | 只允许普通键（给"只会回车的普通用户"挡位用，防止它用快捷键作弊） |
 | `vm_wait(ms)` | 等待 |
 
+## 快速开始
+
+**第一次用？直接看 [docs/QUICKSTART.md](docs/QUICKSTART.md)** —— 保姆级流程，从装插件到第一次截图点击，含常见问题排查表。
+
 ## 安装
 
 ```sh
@@ -50,6 +54,10 @@ dsh plugin add C:\path\to\dsh-vm-tester-x.y.z.tgz
 # 方式三：从本仓库安装
 dsh plugin add github:yugejixian/vm-blackbox
 ```
+
+> **装完只是遥控器，还不能用**：虚拟机、访客代理、宿主隧道三者缺一不可。
+> 完整步骤见 [docs/QUICKSTART.md](docs/QUICKSTART.md)。若你的安装方式拿不到 `agent/` 目录（较早的 npm 版本），
+> 请改用 `dsh plugin add github:yugejixian/vm-blackbox`，它包含全部脚本。
 
 > 如果你的 profile 里已经手工插入过同样 `id: vm-tester` 的 patch 行，**必须先删掉**，否则会重复加载同一插件导致启动失败。
 

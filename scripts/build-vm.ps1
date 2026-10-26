@@ -14,13 +14,13 @@
 # 前置：
 #   - VirtualBox 7.x（默认装在 C:\Program Files\Oracle\VirtualBox）
 #   - 官方 zh-CN Windows 11 ISO（自行准备；本脚本不提供镜像）
-#   - D:\null_work\agent 下有 QaTunnel.exe、install-task2.bat、uac-off.bat
+#   - 同包的 agent/ 目录下有 QaTunnel.exe、install-task2.bat、uac-off.bat
 #   - 宿主的 tunnel-host.js 已在跑（127.0.0.1:8890）
 
 param(
     [Parameter(Mandatory = $true)][string]$Iso,
     [string]$VmName = 'qa-win11-zh',
-    [string]$BaseFolder = 'D:\null_work\vms',
+    [string]$BaseFolder = '',
     [string]$GuestUser = 'qa',
     # 演示默认密码：仅用于一次性测试虚拟机。生产环境请显式传 -GuestPassword
     [string]$GuestPassword = 'Passw0rd!',
@@ -30,8 +30,12 @@ param(
     [int]$ImageIndex = 4,          # 4 = Windows 11 专业版（中文 ISO 里通常是这个序号）
     [string]$Locale = 'zh_CN',
     [string]$SnapshotName = 'zh-cn-clean',
-    [string]$AgentDir = 'D:\null_work\agent'
+    [string]$AgentDir = '',
 )
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $AgentDir)   { $AgentDir   = Join-Path $repoRoot 'agent' }
+if (-not $BaseFolder) { $BaseFolder = Join-Path $env:USERPROFILE 'VirtualBox VMs' }
 
 $ErrorActionPreference = 'Stop'
 $vbm = 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'

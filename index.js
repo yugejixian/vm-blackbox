@@ -6,7 +6,7 @@ import { join } from 'node:path'
 export const inject = ['tools', 'attachments']
 
 const DEFAULT_TUNNEL = 'http://127.0.0.1:8890'
-const DEFAULT_SHOTS = 'D:\\null_work\\shots'
+const DEFAULT_SHOTS = join(process.env.LOCALAPPDATA || process.env.TEMP || '.', 'dsh-vm-tester', 'shots')
 
 function q(value) {
   // searchParams decodes '+' as a space, so keep literal plus signs escaped.

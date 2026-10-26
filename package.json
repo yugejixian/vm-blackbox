@@ -12,7 +12,13 @@
     "index.js",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "agent",
+    "scripts",
+    "docs",
+    "assets",
+    "cases",
+    "examples"
   ],
   "dsh": {
     "bundle": {
