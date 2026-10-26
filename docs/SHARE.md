@@ -9,7 +9,7 @@
 
 | 方式 | 命令 | 说明 |
 |---|---|---|
-| **A. Release 包（推荐，不依赖 npm）** | 见下方分步 | 一个 80 KB 的 `.tgz`，包含插件 + 部署脚本 + 文档 |
+| **A. Release 包（推荐，不依赖 npm）** | 见下方分步 | 一个 86 KB 的 `.tgz`，包含插件 + 部署脚本 + 文档 |
 | **B. npm** | `dsh plugin add dsh-vm-tester` | 需要能访问 npm |
 | **C. GitHub 仓库** | `dsh plugin add github:yugejixian/vm-blackbox` | 需要能访问 GitHub |
 
@@ -17,11 +17,11 @@
 
 1. 浏览器打开下载页（直接下载，无需登录）：
    <https://github.com/yugejixian/vm-blackbox/releases/latest>
-2. 下载 **`dsh-vm-tester-0.1.3.tgz`**（80 KB）；
+2. 下载最新 Release 里的 **`dsh-vm-tester-0.1.4.tgz`**（86 KB）；
 3. 装进 DSH：
 
    ```sh
-   dsh plugin add C:\Users\你\Downloads\dsh-vm-tester-0.1.3.tgz
+   dsh plugin add C:\Users\你\Downloads\dsh-vm-tester-0.1.4.tgz
    ```
 
 4. 完全退出 DSH 再打开（让插件加载）。
