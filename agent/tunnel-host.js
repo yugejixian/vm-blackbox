@@ -31,6 +31,18 @@ let nextId = 1;
 let lastClick = null; // {x, y} of the most recent click, drawn as a crosshair
 const pending = new Map();
 
+function cleanupTempShots() {
+  try {
+    const now = Date.now();
+    for (const f of fs.readdirSync(SHOTS)) {
+      if (!/^(gc|gco|raw)-/.test(f)) continue;
+      const fp = path.join(SHOTS, f);
+      try { if (now - fs.statSync(fp).mtimeMs > 10 * 60 * 1000) fs.unlinkSync(fp); } catch (e) { }
+    }
+  } catch (e) { }
+}
+cleanupTempShots();
+
 function log(m) { console.log(new Date().toISOString().slice(11, 19), m); }
 
 function processBuffer() {
@@ -146,21 +158,24 @@ async function guestCursor() {
 
 // 抓屏不含系统光标（光标由宿主绘制），这里把代理报告的指针位置画成合成箭头。
 async function overlayCursor(buf, quality, maskTokens) {
+  const stamp = Date.now() + '-' + (shotSeq++);
+  const ip = path.join(SHOTS, 'gc-' + stamp + '.jpg');
+  const op = path.join(SHOTS, 'gco-' + stamp + '.jpg');
   try {
-    const stamp = Date.now() + '-' + (shotSeq++);
-    const ip = path.join(SHOTS, 'gc-' + stamp + '.jpg');
-    const op = path.join(SHOTS, 'gco-' + stamp + '.jpg');
+    fs.mkdirSync(SHOTS, { recursive: true });
     fs.writeFileSync(ip, buf);
     const c = await guestCursor();
     const maskArgs = (maskTokens || []).map((m) => 'mask=' + m);
     await run(OVERLAY, [ip, op, '-1', '-1', String(quality), String(c.x), String(c.y), 'noruler', ...maskArgs], 15000);
-    const out = fs.readFileSync(op);
+    return fs.readFileSync(op);
+  } catch (e) {
+    return buf;
+  } finally {
+    // 失败也必须删，否则抓帧失败会疯狂堆积临时文件
     try { fs.unlinkSync(ip); } catch (e) { }
     try { fs.unlinkSync(op); } catch (e) { }
-    return out;
-  } catch (e) { return buf; }
+  }
 }
-
 async function currentMaskTokens() {
   try {
     const r = await call('MASKS', [], 800);
@@ -175,18 +190,20 @@ async function hostShot(quality, persist, maskTokens) {
   const stamp = Date.now() + '-' + (shotSeq++);
   const raw = path.join(SHOTS, 'raw-' + stamp + '.png');
   const out = path.join(SHOTS, 'shot-' + stamp + '.jpg');
-  await run(VBOX, ['controlvm', VM, 'screenshotpng', raw], 5000);
-  const cx = lastClick ? lastClick.x : -1;
-  const cy = lastClick ? lastClick.y : -1;
-  const cur = await guestCursor();
-  const maskArgs = (maskTokens || []).map((m) => 'mask=' + m);
-  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y), ...maskArgs], 5000);
-  const buf = fs.readFileSync(out);
-  try { fs.unlinkSync(raw); } catch (e) { }
-  if (!persist) { try { fs.unlinkSync(out); } catch (e) { } return { buf, file: null }; }
-  return { buf, file: out };
+  try {
+    await run(VBOX, ['controlvm', VM, 'screenshotpng', raw], 5000);
+    const cx = lastClick ? lastClick.x : -1;
+    const cy = lastClick ? lastClick.y : -1;
+    const cur = await guestCursor();
+    const maskArgs = (maskTokens || []).map((m) => 'mask=' + m);
+    await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y), ...maskArgs], 5000);
+    const buf = fs.readFileSync(out);
+    return persist ? { buf, file: out } : { buf, file: null };
+  } finally {
+    try { fs.unlinkSync(raw); } catch (e) { }
+    if (!persist) { try { fs.unlinkSync(out); } catch (e) { } }
+  }
 }
-
 net.createServer((s) => {
   sock = s;
   buffer = Buffer.alloc(0);
