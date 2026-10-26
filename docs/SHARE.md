@@ -15,7 +15,7 @@
 
 ### A 方式分步
 
-1. 浏览器打开下载页（直接下载，无需登录）：
+1. 浏览器打开下载页（直接下载，无需登录）；**放在哪个盘、哪个目录都可以**，路径含空格或中文时记得加引号：
    <https://github.com/yugejixian/vm-blackbox/releases/latest>
 2. 下载最新 Release 里的 **`dsh-vm-tester-0.1.4.tgz`**（86 KB）；
 3. 装进 DSH：

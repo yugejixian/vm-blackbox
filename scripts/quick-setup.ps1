@@ -156,7 +156,9 @@ if ($tunnelUp) {
   New-Item -ItemType Directory -Force -Path $ShotsDir | Out-Null
   $env:QA_SHOTS_DIR = $ShotsDir
   $env:QA_VM_NAME = $VmName
-  Start-Process -FilePath $node -ArgumentList (Join-Path $agentDir 'tunnel-host.js') -WindowStyle Hidden
+  $tunnelJs = Join-Path $agentDir 'tunnel-host.js'
+  # PowerShell 5.1 不会给参数加引号，含空格/中文的路径必须显式加
+  Start-Process -FilePath $node -ArgumentList @("`"$tunnelJs`"") -WindowStyle Hidden
   Write-Ok '隧道已在后台启动'
 }
 
