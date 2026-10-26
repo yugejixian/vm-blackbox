@@ -20,3 +20,6 @@ desktop.ini
 
 dist/
 
+
+# 凭据库（本机 DPAPI 加密，不入库）
+vault.dat

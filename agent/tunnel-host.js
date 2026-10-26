@@ -16,7 +16,9 @@ const HTTP_PORT = 8890;
 const os = require('os');
 const SHOTS = process.env.QA_SHOTS_DIR || path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'dsh-vm-tester', 'shots');
 const AGENT_DIR = process.env.QA_AGENT_DIR || __dirname;
-const VAULT_GET = path.join(AGENT_DIR, 'vault-get.ps1');
+// vault-get.ps1 可能在 agent/（自包含包）或 ../scripts/（仓库布局）——两处都找
+const vaultScriptCandidates = [path.join(AGENT_DIR, 'vault-get.ps1'), path.join(AGENT_DIR, '..', 'scripts', 'vault-get.ps1')];
+const VAULT_GET = vaultScriptCandidates.find((f) => { try { return fs.existsSync(f); } catch (e) { return false; } }) || vaultScriptCandidates[0];
 const PS = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 const VBOX = process.env.QA_VBOXMANAGE || 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
