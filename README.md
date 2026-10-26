@@ -62,6 +62,23 @@ config:
 
 **无论哪种模式，判定都必须由截图支撑**：`vm_ui` 只用来「找按钮在哪」，不能拿来当「功能是否正常」的证据。
 
+## 虚拟机硬件伪装（可选，测试「反 VM 检测」类软件用）
+
+有些被测软件会检测自己是不是跑在虚拟机里。可以用脚本把**自有虚拟机**伪装成一台常见物理机，观察软件行为差异。
+
+```powershell
+# 应用伪装（SMBIOS 厂商/型号、BIOS、硬盘/光驱型号、MAC）
+powershell -ExecutionPolicy Bypass -File scripts\disguise-vm.ps1 -VmName "<虚拟机名>"
+
+# 还原
+powershell -ExecutionPolicy Bypass -File scripts\disguise-vm.ps1 -VmName "<虚拟机名>" -Revert
+```
+
+设置需要**关机后开机**生效；开机后可在虚拟机里用 `systeminfo`、`wmic csproduct get vendor,model` 检查。
+
+> 说明：这只是把硬件标识换成常见值，方便测试兼容性/检测行为；请只用于你自己的环境，不要用它规避你不被允许运行的软件的限制。
+> 伪装后**不要卸载 Guest Additions**，否则 dsh-vm-tester 的隧道会断。
+
 ## 故障排查：画面冻结 / 输入失效
 
 症状：**截图还在更新（或停在某一刻）、鼠标键盘完全无反应**，但虚拟机里 PowerShell 还能执行。
