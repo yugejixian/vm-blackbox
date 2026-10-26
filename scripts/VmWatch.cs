@@ -1,4 +1,4 @@
-// VmWatch — 桌面看板：把虚拟机的实时画面显示在一个独立小窗里。
+﻿// VmWatch — 桌面看板：把虚拟机的实时画面显示在一个独立小窗里。
 // 不依赖 DSH、不装插件，直接读宿主隧道 http://127.0.0.1:8890。
 //   - 默认置顶，可拖动、可缩放
 //   - Esc 关闭；T 切换置顶；空格 暂停/继续
@@ -40,6 +40,7 @@ namespace VmWatch
 
             _status.Dock = DockStyle.Bottom;
             _status.Height = 22;
+            _status.Text = _status.Text + " | #" + _frameTotal + " " + DateTime.Now.ToString("HH:mm:ss");
             _status.ForeColor = Color.Gainsboro;
             _status.BackColor = Color.FromArgb(30, 30, 34);
             _status.Text = "连接中…";
@@ -81,6 +82,7 @@ namespace VmWatch
                             if (old != null) old.Dispose();
                             _lastError = "";
                             _frames++;
+                            _frameTotal++;
                             UpdateStatus();
                         }));
                     }
@@ -135,12 +137,14 @@ namespace VmWatch
                 _fpsSince = DateTime.Now;
             }
             string guest = GuestStatus();
+            Text = "VM live | #" + _frameTotal + " " + DateTime.Now.ToString("HH:mm:ss");
             string mode = _paused ? "已暂停" : (string.IsNullOrEmpty(_lastError) ? "实时" : "重试中");
             _status.Text = string.Format(" {0} · {1} · {2:0.0} 帧/秒 · 置顶={3} · Esc关闭 T置顶 空格暂停",
                 guest, mode, _fps, TopMost ? "开" : "关");
             _status.ForeColor = guest == "guest=up" && string.IsNullOrEmpty(_lastError) ? Color.Gainsboro : Color.OrangeRed;
         }
 
+        private long _frameTotal;
         private double _fps;
 
         [STAThread]

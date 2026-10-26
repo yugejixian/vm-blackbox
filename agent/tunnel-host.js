@@ -112,6 +112,8 @@ function liveMaskTokens() {
 let lastGuestHash = null;
 let lastHostHash = null;
 let staleUntil = 0;
+let lastProbeAt = 0; // 宿主帧探测节流（静止桌面不该每帧都探测）
+let hostProbeBlockedUntil = 0; // 探测失败后的退避期
 const sha1 = (b) => crypto.createHash('sha1').update(b).digest('hex');
 
 // 跑一条命令并拿到 stdout（凭据解密用；绝不打日志）
@@ -162,12 +164,12 @@ async function hostShot(quality, persist, maskTokens) {
   const stamp = Date.now() + '-' + (shotSeq++);
   const raw = path.join(SHOTS, 'raw-' + stamp + '.png');
   const out = path.join(SHOTS, 'shot-' + stamp + '.jpg');
-  await run(VBOX, ['controlvm', VM, 'screenshotpng', raw], 15000);
+  await run(VBOX, ['controlvm', VM, 'screenshotpng', raw], 5000);
   const cx = lastClick ? lastClick.x : -1;
   const cy = lastClick ? lastClick.y : -1;
   const cur = await guestCursor();
   const maskArgs = (maskTokens || []).map((m) => 'mask=' + m);
-  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y), ...maskArgs], 15000);
+  await run(OVERLAY, [raw, out, String(cx), String(cy), String(quality), String(cur.x), String(cur.y), ...maskArgs], 5000);
   const buf = fs.readFileSync(out);
   try { fs.unlinkSync(raw); } catch (e) { }
   if (!persist) { try { fs.unlinkSync(out); } catch (e) { } return { buf, file: null }; }
@@ -308,7 +310,10 @@ http.createServer(async (req, res) => {
           const gh = sha1(buf);
           const guestRepeated = lastGuestHash && gh === lastGuestHash;
           const inStaleMode = Date.now() < staleUntil;
-          if (inStaleMode || guestRepeated) {
+          const probeAllowed = Date.now() > hostProbeBlockedUntil;
+          const shouldProbe = probeAllowed && (inStaleMode || (guestRepeated && Date.now() - lastProbeAt >= 8000));
+          if (shouldProbe) {
+            lastProbeAt = Date.now();
             try {
               const r = await hostShot(q, false, allTokens);
               const hh = sha1(r.buf);
@@ -319,7 +324,11 @@ http.createServer(async (req, res) => {
                 staleUntil = Date.now() + 60000;
                 buf = r.buf; file = null; via = 'host';
               }
-            } catch (e) { log('host capture probe failed: ' + e.message); }
+            } catch (e) {
+              hostProbeBlockedUntil = Date.now() + 60000; // 失败后退避，别拖慢每一次截图
+              if (inStaleMode) staleUntil = 0; // 宿主抓不到就回到访客帧，别死循环
+              log('host capture probe failed (backing off 60s): ' + e.message);
+            }
           }
           lastGuestHash = gh;
         }
