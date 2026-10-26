@@ -67,8 +67,8 @@ export function apply(ctx, config) {
   ctx.effect(() => ctx.tools.register({
     name: 'vm_status',
     description:
-      'Check whether the guest VM is reachable and report its screen size and logged-in user. ' +
-      'Call this before any other vm_* tool; when it reports connected=false the tunnel or the guest agent is not running.',
+      'Check whether the guest VM is reachable; report screen size, logged-in user and the FOREGROUND WINDOW TITLE. ' +
+      'Call this before any other vm_* tool; when it reports connected=false the tunnel or the guest agent is not running. ' + 'Before vm_type/vm_click, use foregroundWindow to confirm the target window.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     output: {
       schema: {
@@ -96,7 +96,7 @@ export function apply(ctx, config) {
         return { connected: false, error: 'tunnel host has no guest session' }
       }
       const info = await requestJson('/info')
-      return { connected: true, width: info.w, height: info.h, user: info.user }
+      return { connected: true, width: info.w, height: info.h, user: info.user, foregroundWindow: info.fg || '' }
     },
   }))
 

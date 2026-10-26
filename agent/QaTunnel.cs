@@ -97,7 +97,7 @@ namespace QaTunnel
                             switch (op)
                             {
                                 case "CURSOR": { POINT cp; if (GetCursorPos(out cp)) SendOk(ns, id, "{\"x\":" + cp.X + ",\"y\":" + cp.Y + "}"); else SendErr(ns, id, "cursor failed"); break; }
-                                case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\"}"); break;
+                                case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\",\"fg\":\"" + FgTitle() + "\"}"); break;
                                 case "SECRET":
                                     {
                                         string txt = Encoding.UTF8.GetString(Convert.FromBase64String(parts[2]));
@@ -216,6 +216,22 @@ namespace QaTunnel
             byte[] b = Encoding.UTF8.GetBytes(id + " ERR " + msg + "\n");
             ns.Write(b, 0, b.Length);
             ns.Flush();
+        }
+
+        // 前台窗口标题：让测试员知道当前焦点在哪（避免在错误的窗口里输入）
+        private static string FgTitle()
+        {
+            try
+            {
+                IntPtr h = GetForegroundWindow();
+                if (h == IntPtr.Zero) return "";
+                var sb = new StringBuilder(512);
+                GetWindowText(h, sb, sb.Capacity);
+                string t = sb.ToString();
+                if (t.Length > 120) t = t.Substring(0, 120);
+                return t.Replace("\\", "/").Replace("\"", "'");
+            }
+            catch { return ""; }
         }
 
         private static int W() { return GetSystemMetrics(0); }
