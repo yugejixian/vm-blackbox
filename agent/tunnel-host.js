@@ -167,7 +167,7 @@ async function currentMaskTokens() {
     const o = JSON.parse(r);
     if (Array.isArray(o.masks)) return o.masks.map((m) => m.join(','));
   } catch (e) { }
-  return liveMaskTokens;
+  return liveMaskTokens();
 }
 
 async function hostShot(quality, persist, maskTokens) {
@@ -213,7 +213,6 @@ http.createServer(async (req, res) => {
       case '/masks/clear': {
         try {
           activeMasks.length = 0;
-          liveMaskTokens = [];
           staleUntil = 0;
           await call('CLEARMASKS', []);
           res.setHeader('Content-Type', 'application/json');
