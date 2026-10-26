@@ -1,3 +1,13 @@
+## 0.1.6
+
+### Added
+- **vm_ui**：返回前台窗口的 UI Automation 元素树（类型/名称/AutomationId/矩形/中心点/visible），按名字精确点击控件，不必从截图估坐标。
+- **vm_status.foregroundWindow**：操作前确认目标窗口。
+- README 增「用 vm_ui 定位控件」与「输入与关闭的硬规则」。
+
+### Fixed
+- 部署脚本升级已有代理：改用 `schtasks /End` 结束高权限旧进程，不再要求用户手动重启虚拟机。
+- 基线快照清理：清除记事本会话、Win+R 历史、通知弹窗（避免测试时出现幽灵内容遮挡）。
 # Changelog
 
 ## 0.1.5 — 2026-10-26

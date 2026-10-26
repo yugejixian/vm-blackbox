@@ -1,47 +1,47 @@
-{
-  "name": "dsh-vm-tester",
-  "version": "0.1.5",
-  "type": "module",
-  "description": "Black-box GUI testing for DeepSeek Harness: the agent sees only screenshots and drives only mouse/keyboard inside a VirtualBox guest.",
-  "exports": {
-    ".": "./index.js",
-    "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
-  },
-  "files": [
-    "index.js",
-    "cordis.patch.yml",
-    "locale/*.json",
-    "icon.svg",
-    "agent",
-    "scripts",
-    "docs",
-    "assets",
-    "cases",
-    "examples"
-  ],
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
-  "license": "MIT",
-  "keywords": [
-    "dsh",
-    "deepseek-harness",
-    "plugin",
-    "testing",
-    "black-box",
-    "virtualbox",
-    "gui-automation"
-  ],
-  "main": "./index.js",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/yugejixian/vm-blackbox.git"
-  },
-  "homepage": "https://github.com/yugejixian/vm-blackbox#readme",
-  "bugs": {
-    "url": "https://github.com/yugejixian/vm-blackbox/issues"
-  }
+﻿{
+    "name":  "dsh-vm-tester",
+    "version":  "0.1.6",
+    "type":  "module",
+    "description":  "Black-box GUI testing for DeepSeek Harness: the agent sees only screenshots and drives only mouse/keyboard inside a VirtualBox guest.",
+    "exports":  {
+                    ".":  "./index.js",
+                    "./locale/*.json":  "./locale/*.json",
+                    "./icon":  "./icon.svg"
+                },
+    "files":  [
+                  "index.js",
+                  "cordis.patch.yml",
+                  "locale/*.json",
+                  "icon.svg",
+                  "agent",
+                  "scripts",
+                  "docs",
+                  "assets",
+                  "cases",
+                  "examples"
+              ],
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           }
+            },
+    "license":  "MIT",
+    "keywords":  [
+                     "dsh",
+                     "deepseek-harness",
+                     "plugin",
+                     "testing",
+                     "black-box",
+                     "virtualbox",
+                     "gui-automation"
+                 ],
+    "main":  "./index.js",
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/yugejixian/vm-blackbox.git"
+                   },
+    "homepage":  "https://github.com/yugejixian/vm-blackbox#readme",
+    "bugs":  {
+                 "url":  "https://github.com/yugejixian/vm-blackbox/issues"
+             }
 }
