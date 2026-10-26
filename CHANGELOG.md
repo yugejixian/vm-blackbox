@@ -1,6 +1,10 @@
 ## 0.1.6
 
 ### Added
+- **UAC 支持**：`scripts/uac-approve.ps1`（宿主侧注入键盘批准 UAC）、`scripts/uac-off.ps1`（访客内关闭 UAC）。
+- `/shot` 失败自动回退宿主 framebuffer（`X-Shot-Via: host-fallback`），UAC/安全桌面也能看到画面。
+- `vm_status` 新增 `ptrReason`（ok / secure_desktop / no_cursor），区分 UAC 与真实卡死。
+
 - `scripts/disguise-vm.ps1`：一键应用/还原物理机伪装（SMBIOS、硬盘/光驱型号、MAC），用于反 VM 检测类软件的黑盒测试。
 
 - **`strictPixelOnly` 配置**：严格像素模式（只允许截图 + 键鼠，禁用 `vm_ui` 与前台窗口标题），满足最纯粹的「傻子测试员」黑盒前提；默认关闭（辅助定位模式）。

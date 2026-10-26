@@ -186,6 +186,17 @@ async function currentMaskTokens() {
   return liveMaskTokens();
 }
 
+// 截图失败回退：直接用宿主 framebuffer（无视安全桌面/overlay 崩溃）
+async function fallbackHostShot(quality) {
+  const stamp = Date.now() + "-" + (shotSeq++);
+  const raw = path.join(SHOTS, "fb-" + stamp + ".png");
+  try {
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await run(VBOX, ["controlvm", VM, "screenshotpng", raw], 8000);
+    return fs.readFileSync(raw);
+  } finally { try { fs.unlinkSync(raw); } catch (e) { } }
+}
+
 async function hostShot(quality, persist, maskTokens) {
   fs.mkdirSync(SHOTS, { recursive: true });
   const stamp = Date.now() + '-' + (shotSeq++);
@@ -333,75 +344,86 @@ http.createServer(async (req, res) => {
         return;
       }
       case '/shot': {
-        const q = parseInt(u.searchParams.get('q') || '80', 10);
-        const src = u.searchParams.get('src');
-        let buf = null, file = null, via = 'guest';
-        const shotMasks = [];
-        const maskParam = u.searchParams.get('mask') || '';
-        for (const part of maskParam.split(';')) {
-          const f = part.split(',').map((v) => parseInt(v, 10));
-          if (f.length === 4 && f.every((v) => Number.isFinite(v)) && f[2] > 0 && f[3] > 0) shotMasks.push(...f.map(String));
+        try {
+                  const q = parseInt(u.searchParams.get('q') || '80', 10);
+                  const src = u.searchParams.get('src');
+                  let buf = null, file = null, via = 'guest';
+                  const shotMasks = [];
+                  const maskParam = u.searchParams.get('mask') || '';
+                  for (const part of maskParam.split(';')) {
+                    const f = part.split(',').map((v) => parseInt(v, 10));
+                    if (f.length === 4 && f.every((v) => Number.isFinite(v)) && f[2] > 0 && f[3] > 0) shotMasks.push(...f.map(String));
+                  }
+                  const maskTokens = shotMasks.length
+                    ? shotMasks.reduce((acc, v, i) => { if (i % 4 === 0) acc.push(shotMasks.slice(i, i + 4).join(',')); return acc; }, [])
+                    : [];
+                  const activeTokens = liveMaskTokens();
+                  const allTokens = maskTokens.concat(activeTokens);
+                  const flatMasks = allTokens.reduce((acc, t) => { acc.push(...t.split(',')); return acc; }, []);
+                  const shotArgs = [String(q), 'ruler']; // 遮罩由代理按窗口生命周期处理
+                  if (src !== 'host') {
+                    try { buf = await call('SHOT', shotArgs, 8000); } catch (e) { buf = null; }
+                  }
+                  // ---- 陈旧帧检测 ----
+                  // 访客 GDI 截不到 3D/D3D 交换链时不会报错，而是返回上一帧桌面。
+                  // 判据：访客帧与上一张完全相同，但宿主帧缓冲却在变 → 判定为陈旧，改走宿主抓帧（保持 60 秒）。
+                  if (buf) {
+                    const gh = sha1(buf);
+                    const guestRepeated = lastGuestHash && gh === lastGuestHash;
+                    const inStaleMode = Date.now() < staleUntil;
+                    const probeAllowed = Date.now() > hostProbeBlockedUntil;
+                    const shouldProbe = probeAllowed && (inStaleMode || (guestRepeated && Date.now() - lastProbeAt >= 8000));
+                    if (shouldProbe) {
+                      lastProbeAt = Date.now();
+                      try {
+                        const r = await hostShot(q, false, await currentMaskTokens());
+                        const hh = sha1(r.buf);
+                        const hostChanged = !lastHostHash || hh !== lastHostHash;
+                        lastHostHash = hh;
+                        if (inStaleMode || hostChanged) {
+                          if (!inStaleMode) log('guest frame stale while host frame changed -> host capture for 60s');
+                          staleUntil = Date.now() + 60000;
+                          buf = r.buf; file = null; via = 'host';
+                        }
+                      } catch (e) {
+                        hostProbeBlockedUntil = Date.now() + 60000; // 失败后退避，别拖慢每一次截图
+                        if (inStaleMode) staleUntil = 0; // 宿主抓不到就回到访客帧，别死循环
+                        log('host capture probe failed (backing off 60s): ' + e.message);
+                      }
+                    }
+                    lastGuestHash = gh;
+                  }
+                  if (!buf) {
+                    via = 'host';
+                    const r = await hostShot(q, false, await currentMaskTokens());
+                    buf = r.buf;
+                    file = r.file;
+                    log('guest capture failed, used host framebuffer');
+                  }
+                  if (buf && via === 'guest') buf = await overlayCursor(buf, q, allTokens);
+                  if (!file && u.searchParams.get('nosave') !== '1') {
+                    fs.mkdirSync(SHOTS, { recursive: true });
+                    file = path.join(SHOTS, 'shot-' + Date.now() + '.jpg');
+                    fs.writeFileSync(file, buf);
+                  }
+                  res.setHeader('Content-Type', 'image/jpeg');
+                  res.setHeader('X-Shot-Path', file);
+                  res.setHeader('X-Shot-Bytes', String(buf.length));
+                  res.setHeader('X-Shot-Via', via);
+                  res.end(buf);
+                  return;
+        } catch (e) {
+          try {
+            const fb = await fallbackHostShot(typeof q !== 'undefined' ? q : 80);
+            res.setHeader('Content-Type', 'image/jpeg');
+            res.setHeader('X-Shot-Via', 'host-fallback');
+            res.setHeader('X-Shot-Fallback', String(e.message).slice(0, 200));
+            res.end(fb);
+          } catch (e2) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message), fallbackError: String(e2.message) })); }
         }
-        const maskTokens = shotMasks.length
-          ? shotMasks.reduce((acc, v, i) => { if (i % 4 === 0) acc.push(shotMasks.slice(i, i + 4).join(',')); return acc; }, [])
-          : [];
-        const activeTokens = liveMaskTokens();
-        const allTokens = maskTokens.concat(activeTokens);
-        const flatMasks = allTokens.reduce((acc, t) => { acc.push(...t.split(',')); return acc; }, []);
-        const shotArgs = [String(q), 'ruler']; // 遮罩由代理按窗口生命周期处理
-        if (src !== 'host') {
-          try { buf = await call('SHOT', shotArgs, 8000); } catch (e) { buf = null; }
-        }
-        // ---- 陈旧帧检测 ----
-        // 访客 GDI 截不到 3D/D3D 交换链时不会报错，而是返回上一帧桌面。
-        // 判据：访客帧与上一张完全相同，但宿主帧缓冲却在变 → 判定为陈旧，改走宿主抓帧（保持 60 秒）。
-        if (buf) {
-          const gh = sha1(buf);
-          const guestRepeated = lastGuestHash && gh === lastGuestHash;
-          const inStaleMode = Date.now() < staleUntil;
-          const probeAllowed = Date.now() > hostProbeBlockedUntil;
-          const shouldProbe = probeAllowed && (inStaleMode || (guestRepeated && Date.now() - lastProbeAt >= 8000));
-          if (shouldProbe) {
-            lastProbeAt = Date.now();
-            try {
-              const r = await hostShot(q, false, await currentMaskTokens());
-              const hh = sha1(r.buf);
-              const hostChanged = !lastHostHash || hh !== lastHostHash;
-              lastHostHash = hh;
-              if (inStaleMode || hostChanged) {
-                if (!inStaleMode) log('guest frame stale while host frame changed -> host capture for 60s');
-                staleUntil = Date.now() + 60000;
-                buf = r.buf; file = null; via = 'host';
-              }
-            } catch (e) {
-              hostProbeBlockedUntil = Date.now() + 60000; // 失败后退避，别拖慢每一次截图
-              if (inStaleMode) staleUntil = 0; // 宿主抓不到就回到访客帧，别死循环
-              log('host capture probe failed (backing off 60s): ' + e.message);
-            }
-          }
-          lastGuestHash = gh;
-        }
-        if (!buf) {
-          via = 'host';
-          const r = await hostShot(q, false, await currentMaskTokens());
-          buf = r.buf;
-          file = r.file;
-          log('guest capture failed, used host framebuffer');
-        }
-        if (buf && via === 'guest') buf = await overlayCursor(buf, q, allTokens);
-        if (!file && u.searchParams.get('nosave') !== '1') {
-          fs.mkdirSync(SHOTS, { recursive: true });
-          file = path.join(SHOTS, 'shot-' + Date.now() + '.jpg');
-          fs.writeFileSync(file, buf);
-        }
-        res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('X-Shot-Path', file);
-        res.setHeader('X-Shot-Bytes', String(buf.length));
-        res.setHeader('X-Shot-Via', via);
-        res.end(buf);
         return;
       }
-      case '/click': {
+            case '/click': {
         try {
           const x = parseInt(u.searchParams.get('x'), 10);
           const y = parseInt(u.searchParams.get('y'), 10);
