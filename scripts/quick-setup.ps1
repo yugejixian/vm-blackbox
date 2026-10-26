@@ -142,6 +142,8 @@ if (-not $agentRunning) {
   Start-Sleep -Seconds 2
 }
 
+if (-not $ShotsDir) { $ShotsDir = Join-Path $env:LOCALAPPDATA 'dsh-vm-tester\shots' }
+
 # ---------- 5. 宿主隧道 ----------
 Write-Step '启动宿主隧道'
 $tunnelUp = $false
@@ -152,7 +154,6 @@ try {
 if ($tunnelUp) {
   Write-Ok '隧道已在运行，跳过启动'
 } else {
-  if (-not $ShotsDir) { $ShotsDir = Join-Path $env:LOCALAPPDATA 'dsh-vm-tester\shots' }
   New-Item -ItemType Directory -Force -Path $ShotsDir | Out-Null
   $env:QA_SHOTS_DIR = $ShotsDir
   $env:QA_VM_NAME = $VmName

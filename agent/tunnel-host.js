@@ -178,7 +178,9 @@ net.createServer((s) => {
   sock = s;
   buffer = Buffer.alloc(0);
   s.setNoDelay(true);
-  s.on('data', (d) => { buffer = Buffer.concat([buffer, d]); processBuffer(); });
+  // 访客异常断连（ECONNRESET）若无人监听 'error'，Node 会直接退出。
+  s.on('error', (e) => { log('guest socket error: ' + (e && e.code ? e.code : e)); });
+  s.on('data', (d) => { try { buffer = Buffer.concat([buffer, d]); processBuffer(); } catch (e) { log('buffer error: ' + e.message); } });
   s.on('close', () => {
     log('guest disconnected');
     sock = null;

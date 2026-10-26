@@ -1,4 +1,4 @@
-// QaTunnel - reverse channel agent. Dials OUT to the host, so no inbound firewall rule is needed.
+﻿// QaTunnel - reverse channel agent. Dials OUT to the host, so no inbound firewall rule is needed.
 // Protocol (UTF-8 lines; one optional binary payload after a header line):
 //   host -> guest : "<id> <OP> [args...]\n"
 //   guest -> host : "<id> OK [len|json]\n" [+ <len> raw bytes]   |   "<id> ERR <message>\n"
@@ -26,9 +26,14 @@ namespace QaTunnel
         // 敏感区域：SECRET 操作后自动把焦点控件遮蔽一段时间，防止密码进截图。
         private static List<Rectangle> _secretMasks = new List<Rectangle>();
         private static long _secretUntilTicks = 0;
+        private static Mutex _singleInstance; // 持有到进程退出，防止被 GC 回收后锁失效
 
         private static void Main(string[] args)
         {
+            // 单实例：两条自启路径（启动文件夹 + 计划任务）同时存在时只允许一个代理进程
+            bool createdNew;
+            _singleInstance = new Mutex(true, "Global\\QaTunnelAgentMutex", out createdNew);
+            if (!createdNew) return;
             // Offline test mode: QaTunnel.exe --render <in.jpg> <out.png>
             if (args.Length >= 3 && args[0] == "--render")
             {
@@ -61,6 +66,18 @@ namespace QaTunnel
             {
                 client.Connect(_host, _port);
                 client.NoDelay = true;
+                // 虚拟机保存/恢复或网络中断后，旧连接不会自己报错；打开 TCP keepalive，
+                // 让读循环在 ~13 秒内发现死连接，从而走外层重连。
+                try
+                {
+                    client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                    byte[] ka = new byte[12];
+                    BitConverter.GetBytes((uint)1).CopyTo(ka, 0);
+                    BitConverter.GetBytes((uint)10000).CopyTo(ka, 4);
+                    BitConverter.GetBytes((uint)3000).CopyTo(ka, 8);
+                    client.Client.IOControl(IOControlCode.KeepAliveValues, ka, null);
+                }
+                catch { }
                 Log("connected");
                 using (NetworkStream ns = client.GetStream())
                 {
@@ -122,7 +139,9 @@ namespace QaTunnel
                                     {
                                         int x = int.Parse(parts[2]); int y = int.Parse(parts[3]);
                                         bool dbl = parts.Length > 4 && parts[4] == "1";
-                                        MoveTo(x, y); Thread.Sleep(40); Click(dbl);
+                                        MoveTo(x, y); Thread.Sleep(40);
+                EnsureForegroundAt(x, y); // 非前台窗口的第一下点击只会激活窗口，先激活再点
+                Click(dbl);
                                         _lastClickX = x; _lastClickY = y;
                                         _lastClickTick = Environment.TickCount;
                                         SendOk(ns, id, "{}");
@@ -364,6 +383,22 @@ namespace QaTunnel
             SendMouse(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, nx, ny, 0);
         }
 
+        private static void EnsureForegroundAt(int x, int y)
+        {
+            try
+            {
+                var pt = new POINT { X = x, Y = y };
+                IntPtr h = WindowFromPoint(pt);
+                if (h == IntPtr.Zero) return;
+                IntPtr root = GetAncestor(h, 2 /* GA_ROOT */);
+                if (root == IntPtr.Zero) root = h;
+                if (root == GetForegroundWindow()) return; // 已是前台，直接点
+                SetForegroundWindow(root);
+                Thread.Sleep(150);
+            }
+            catch { }
+        }
+
         private static void Click(bool dbl)
         {
             SendMouse(MOUSEEVENTF_LEFTDOWN, 0, 0, 0); Thread.Sleep(30);
@@ -532,6 +567,9 @@ namespace QaTunnel
         }
 
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(POINT p);
+        [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
         [DllImport("imm32.dll")] private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);
