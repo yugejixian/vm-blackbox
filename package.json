@@ -1,6 +1,6 @@
 {
   "name": "dsh-vm-tester",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Black-box GUI testing for DeepSeek Harness: the agent sees only screenshots and drives only mouse/keyboard inside a VirtualBox guest.",
   "exports": {
