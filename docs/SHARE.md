@@ -126,3 +126,17 @@ powershell -ExecutionPolicy Bypass -File .\scripts\quick-setup.ps1 `
 
 让 AI 在**一台真实的 Windows 虚拟机里像人一样测软件**：只看截图、只点鼠标键盘，判定必须由像素支撑，而不是读日志或源码。
 虚拟机是隔离的，测崩了回滚快照即可；带密码的场景可以用内置凭据库注入，密码不会进入 AI 的上下文。
+
+## 常见问题：隧道连不上（新虚拟机）
+
+新建的虚拟机，VirtualBox 的 NAT 默认**不允许访客访问宿主 loopback**，代理就连不上宿主隧道。
+`quick-setup.ps1` 会自动检查并修复（虚拟机没运行时会先修好再开机）。
+
+如果虚拟机正在运行、脚本提示无法修复：关机后重跑脚本，或手动执行：
+
+```
+VBoxManage modifyvm "<虚拟机名>" --nat-localhostreachable1 on
+```
+
+（这一步也解释了为什么有的新 VM「虚拟机正常但工具一直连不上」。）
+

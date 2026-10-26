@@ -39,7 +39,7 @@ if (-not $VBoxManage) {
 # 一台常见家用机（ASUS B550M + Ryzen 5 5600H + 三星 SSD）的 SMBIOS 特征
 $settings = [ordered]@{
   'VBoxInternal/Devices/efi/0/Config/DmiBIOSVendor'          = 'American Megatrends Inc.'
-  'VBoxInternal/Devices/efi/0/Config/DmiBIOSVersion'         = '3002'
+  'VBoxInternal/Devices/efi/0/Config/DmiBIOSVersion'         = 'string:3002'
   'VBoxInternal/Devices/efi/0/Config/DmiBIOSReleaseDate'     = '07/12/2023'
   'VBoxInternal/Devices/efi/0/Config/DmiSystemVendor'        = 'ASUSTeK COMPUTER INC.'
   'VBoxInternal/Devices/efi/0/Config/DmiSystemProduct'       = 'PRIME B550M-A'

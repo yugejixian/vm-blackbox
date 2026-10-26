@@ -72,7 +72,8 @@ if ($running -notmatch [regex]::Escape($VmName)) {
     Fail "虚拟机 `"$VmName`" 没有在运行。去掉 -NoStartVm 让脚本自动开机，或先在 VirtualBox 里启动。"
   }
   Write-Step "虚拟机未运行，正在后台开机（headless）"
-  & $VBoxManage startvm $VmName --type headless 2>$null | Out-Null
+  & $VBoxManage modifyvm $VmName --nat-localhostreachable1 on 2>$null | Out-Null
+    & $VBoxManage startvm $VmName --type headless 2>$null | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail "虚拟机启动失败，请在 VirtualBox 里手动启动后再重跑" }
   for ($w = 0; $w -lt 30; $w++) {
     Start-Sleep -Seconds 2
@@ -82,6 +83,21 @@ if ($running -notmatch [regex]::Escape($VmName)) {
   Write-Ok "虚拟机已启动"
 }
 Write-Ok "虚拟机 $VmName 正在运行"
+
+# NAT 的「允许访问宿主 loopback」必须是 on，否则代理连不上 10.0.2.2:8801（新建的 VM 默认是 off）
+$lrLine = ((& $VBoxManage showvminfo $VmName --machinereadable 2>$null) | Select-String 'localhostReachable=').Line
+if ($lrLine -match 'localhostReachable="0"') {
+  & $VBoxManage modifyvm $VmName --nat-localhostreachable1 on 2>$null | Out-Null
+  $lrLine = ((& $VBoxManage showvminfo $VmName --machinereadable 2>$null) | Select-String 'localhostReachable=').Line
+  if ($lrLine -match 'localhostReachable="0"') {
+    Fail @"
+虚拟机的 NAT 不允许访问宿主（localhostReachable=off），代理无法连回宿主。
+修复：关机后重跑本脚本（会自动修复），或手动执行：
+  VBoxManage modifyvm "$VmName" --nat-localhostreachable1 on
+"@
+  }
+  Write-Ok 'NAT 已允许访问宿主'
+}
 
 function Invoke-Guest([string]$exe, [string[]]$guestArgs) {
   $out = & $VBoxManage guestcontrol $VmName run --username $GuestUser --password $GuestPass --wait-stdout --exe $exe -- @guestArgs 2>&1 | Out-String
