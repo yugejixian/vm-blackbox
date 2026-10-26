@@ -35,13 +35,14 @@ function cleanupTempShots() {
   try {
     const now = Date.now();
     for (const f of fs.readdirSync(SHOTS)) {
-      if (!/^(gc|gco|raw)-/.test(f)) continue;
+      if (!/^(gc|gco)-\d+-\d+\.jpg$/.test(f) && !/^raw-\d+-\d+\.png$/.test(f)) continue;
       const fp = path.join(SHOTS, f);
       try { if (now - fs.statSync(fp).mtimeMs > 10 * 60 * 1000) fs.unlinkSync(fp); } catch (e) { }
     }
   } catch (e) { }
 }
 cleanupTempShots();
+setInterval(cleanupTempShots, 5 * 60 * 1000).unref?.();
 
 function log(m) { console.log(new Date().toISOString().slice(11, 19), m); }
 

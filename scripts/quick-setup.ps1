@@ -186,8 +186,32 @@ if (-not $connected) {
 }
 Write-Ok '隧道已连接'
 
-$info = $null
-try { $info = Invoke-RestMethod -Uri 'http://127.0.0.1:8890/info' -TimeoutSec 5 } catch { }
+# ---------- 6.5 自动清理（截图不无限增长；路径全部跟随当前用户）----------
+try {
+  $cleanSource = Join-Path $repoRoot 'scripts\clean-shots.ps1'
+  if (Test-Path $cleanSource) {
+    $cleanDir = Join-Path $env:LOCALAPPDATA 'dsh-vm-tester'
+    New-Item -ItemType Directory -Force -Path $cleanDir | Out-Null
+    $cleanLocal = Join-Path $cleanDir 'clean-shots.ps1'
+    Copy-Item $cleanSource $cleanLocal -Force
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $cleanLocal -ShotsDir $ShotsDir -AllowCustomDir 2>$null | Out-Null
+    $taskCmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + $cleanLocal + '" -ShotsDir "' + $ShotsDir + '" -AllowCustomDir'
+    & schtasks /Create /TN 'dsh-vm-tester-cleanup' /TR $taskCmd /SC DAILY /ST 03:30 /F 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Ok '已安装每日截图清理任务（03:30）'
+    } else {
+      # 没有管理员权限时退化为「登录时自动清理」（启动文件夹，用户级）
+      $cleanupCmd = Join-Path $cleanDir 'cleanup.cmd'
+      $cmdText = '@echo off' + [Environment]::NewLine + 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + $cleanLocal + '" -ShotsDir "' + $ShotsDir + '" -AllowCustomDir >nul 2>&1' + [Environment]::NewLine + 'exit /b 0'
+      Set-Content -Path $cleanupCmd -Value $cmdText -Encoding ASCII
+      $startupDir = [Environment]::GetFolderPath('Startup')
+      Copy-Item $cleanupCmd (Join-Path $startupDir 'dsh-vm-tester-cleanup.cmd') -Force
+      Write-Ok '已安装登录时自动清理（启动文件夹，无需管理员）'
+    }
+  }
+} catch { Write-Step '自动清理安装失败（不影响使用）' }
+
+
 Write-Host ''
 Write-Host '================ 部署完成 ================' -ForegroundColor Cyan
 Write-Host "  虚拟机     : $VmName"

@@ -1,6 +1,6 @@
 // VM Tester — screen-level tools for a Windows guest reached through the reverse tunnel.
 // The VM itself is external infrastructure: this plugin only connects to the tunnel HTTP API.
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const inject = ['tools', 'attachments']
@@ -16,6 +16,34 @@ function q(value) {
 export function apply(ctx, config) {
   const base = String(config?.tunnelUrl ?? DEFAULT_TUNNEL).replace(/\/+$/, '')
   const shotsDir = String(config?.shotsDir ?? DEFAULT_SHOTS)
+
+  // ---- 自动清理规则：截图目录不无限增长 ----
+  // 保留最近 N 小时 或 最新 M 个文件，其余自动删除；每分钟最多检查一次。
+  const keepHours = Number(config?.shotsKeepHours ?? 72)
+  const keepFiles = Number(config?.shotsKeepFiles ?? 300)
+  let lastPrune = 0
+  function pruneShots() {
+    const now = Date.now()
+    if (now - lastPrune < 60000) return
+    lastPrune = now
+    try {
+      const files = readdirSync(shotsDir)
+        .filter((f) => /^shot-\d+\.jpg$/.test(f))
+        .map((f) => {
+          const fp = join(shotsDir, f)
+          let t = 0
+          try { t = statSync(fp).mtimeMs } catch { return null }
+          return { fp, t }
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.t - a.t)
+      for (let i = 0; i < files.length; i++) {
+        if (i >= keepFiles || now - files[i].t > keepHours * 3600000) {
+          try { unlinkSync(files[i].fp) } catch { }
+        }
+      }
+    } catch { }
+  }
 
   async function request(path) {
     let res
