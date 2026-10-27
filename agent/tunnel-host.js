@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 
 const TCP_PORT = 8801;
 const HTTP_PORT = 8890;
@@ -24,13 +24,28 @@ const GUEST_PASS = process.env.QA_GUEST_PASS || 'Passw0rd!';
 const PS = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 const VBOX = process.env.QA_VBOXMANAGE || 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
-const VM = process.env.QA_VM_NAME || 'qa-win11-zh';
+
+// QA_VM_NAME 未显式提供时，自动使用当前唯一运行中的虚拟机（避免默认名过期导致 VBoxManage 全挂）
+function detectVmName() {
+  try {
+    const out = execFileSync(VBOX, ["list", "runningvms"], { windowsHide: true, timeout: 15000 }).toString("utf8");
+    const names = [...out.matchAll(/"([^"]+)"\s*\{/g)].map((m) => m[1]);
+    if (names.length === 1) return names[0];
+    if (names.length > 1) {
+      const pref = names.find((n) => /qa-|win11|vm-/i.test(n));
+      return pref || names[0];
+    }
+  } catch (e) { }
+  return "";
+}
+const VM = process.env.QA_VM_NAME || detectVmName() || 'qa-win11-zh';
 const OVERLAY = path.join(AGENT_DIR, 'RulerOverlay.exe');
 
 let sock = null;
 let buffer = Buffer.alloc(0);
 let nextId = 1;
 let lastClick = null; // {x, y} of the most recent click, drawn as a crosshair
+let lastClickTimer = null;
 const pending = new Map();
 
 function cleanupTempShots() {
@@ -238,7 +253,7 @@ async function transferFile(dir, src, dst, recursive) {
   const args = ["guestcontrol", VM, dir, "--username", GUEST_USER, "--password", GUEST_PASS];
   if (recursive) args.push("--recursive");
   args.push(src, dst);
-  await run(VBOX, args, 300000);
+  await runCapture(VBOX, args, 300000);
   return { ok: true, dir, src, dst, recursive: !!recursive };
 }
 
@@ -292,6 +307,21 @@ http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+  if (req.method === 'POST' && u.pathname === '/type') {
+    try {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const raw = Buffer.concat(chunks).toString('utf8') || '{}';
+      let text = '';
+      try { text = String(JSON.parse(raw).text ?? ''); } catch (e) { text = raw; }
+      const b64 = Buffer.from(text, 'utf8').toString('base64');
+      await call('TYPE', [b64], 30000);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ ok: true, chars: Array.from(text).length, mode: 'post' }));
+    } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
+    return;
+  }
+
   try {
     switch (u.pathname) {
       case '/masks/clear': {
@@ -515,7 +545,7 @@ http.createServer(async (req, res) => {
           const x = parseInt(u.searchParams.get('x'), 10);
           const y = parseInt(u.searchParams.get('y'), 10);
           const clickResult = await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
-          if (Number.isFinite(x) && Number.isFinite(y)) lastClick = { x, y };
+          if (Number.isFinite(x) && Number.isFinite(y)) { lastClick = { x, y }; if (lastClickTimer) clearTimeout(lastClickTimer); lastClickTimer = setTimeout(() => { lastClick = null; }, 3000); if (lastClickTimer.unref) lastClickTimer.unref(); }
           res.setHeader('Content-Type', 'application/json');
           res.end(clickResult && String(clickResult).trim().startsWith('{') ? clickResult : '{"ok":true}');
         } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }

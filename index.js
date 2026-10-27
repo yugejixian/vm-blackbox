@@ -65,6 +65,25 @@ export function apply(ctx, config) {
     const res = await request(path)
     return JSON.parse(await res.text())
   }
+  async function postJson(path, body) {
+    let res
+    try {
+      res = await fetch(base + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+      })
+    } catch (error) {
+      throw new Error(`VM tunnel unreachable at ${base}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      throw new Error(`VM tunnel ${path} failed: HTTP ${res.status} ${detail}`.trim())
+    }
+    return JSON.parse(await res.text())
+  }
+
 
   ctx.effect(() => ctx.tools.register({
     name: 'vm_status',
@@ -94,7 +113,16 @@ export function apply(ctx, config) {
       },
     },
     async execute() {
-      const status = await requestJson('/status')
+      let status
+      try {
+        status = await requestJson('/status')
+      } catch (error) {
+        return {
+          connected: false,
+          error: 'tunnel unreachable - run: powershell -ExecutionPolicy Bypass -File scripts\\session-ready.ps1 -VmName <vm> -GuestPass <pass>',
+          detail: error instanceof Error ? error.message : String(error),
+        }
+      }
       if (!status.connected) {
         return { connected: false, error: 'tunnel host has no guest session' }
       }
@@ -383,6 +411,11 @@ export function apply(ctx, config) {
     },
     async execute(args) {
       const text = String(args?.text ?? '')
+      // 长文本/含换行走 POST，避免 URL 过长导致 HTTP 000（多行中文尤其明显）
+      if (text.length > 120 || /[\r\n]/.test(text)) {
+        const r = await postJson('/type', { text })
+        return { ok: true, chars: Array.from(text).length, mode: r?.mode ?? 'post' }
+      }
       await request(`/type?text=${q(text)}`)
       return { ok: true, chars: Array.from(text).length }
     },

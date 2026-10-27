@@ -493,6 +493,12 @@ namespace QaTunnel
         private static void DrawClickMarker(Graphics g, int w, int h)
         {
             if (_lastClickX == int.MinValue) return;
+            // 点击标记只在 3 秒内可见（避免取证截图里永远挂着 "click x,y" 标签）
+            if (_lastClickTick != 0)
+            {
+                uint age = unchecked((uint)(Environment.TickCount - (int)_lastClickTick));
+                if (age > 3000) return;
+            }
             int x = Math.Max(30, Math.Min(w - 30, _lastClickX));
             int y = Math.Max(30, Math.Min(h - 30, _lastClickY));
             using (var pen = new Pen(Color.FromArgb(235, 0, 255, 255), 2f))

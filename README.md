@@ -71,6 +71,15 @@ vm_snapshot({ action: "restore", name: "base-disguised" })
 - 需要测试「反 VM 检测」类软件时用 `base-disguised`；普通功能测试用 `base-clean`。
 - `restore` 大约需要 2–3 分钟（关机 + 恢复 + 开机 + 代理重连）。
 
+## 隧道与环境下的小坑（已自动处理）
+
+| 现象 | 现在的行为 |
+|---|---|
+| 起隧道时没带 `QA_VM_NAME`（比如新会话手动起） | 隧道**自动探测当前唯一运行中的虚拟机**，快照/上传/下载不再报 `VBoxManage exit 1` |
+| 隧道没起就调 `vm_status` | 返回可操作提示：先跑 `scripts\session-ready.ps1` |
+| 长文本 / 多行中文 `vm_type` | 自动改走 **POST**（不再塞 URL，避免 HTTP 000） |
+| 截图里一直挂着 `click x,y` 标记 | 点击标记 **3 秒后自动消失** |
+
 ## 新会话开场：一条命令就绪
 
 新会话不需要重复部署。先调用 `vm_status`；如果 `connected=false`：
