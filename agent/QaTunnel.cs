@@ -178,7 +178,8 @@ namespace QaTunnel
                                             SendErr(ns, id, "pointer does not move: guest desktop session looks hung (cursor stuck at " + cp.X + "," + cp.Y + "). Reboot the VM and retry.");
                                             break;
                                         }
-                bool popupMode = PopupMenuClick(x, y);
+                string clickStrategy = parts.Length > 5 ? parts[5] : "auto";
+                bool popupMode = clickStrategy == "normal" ? false : (clickStrategy == "auto" ? PopupMenuClick(x, y) : PopupMenuClickStrategy(clickStrategy, x, y));
                 if (!popupMode)
                 {
                     EnsureForegroundAt(x, y); // 非前台窗口的第一下点击只会激活窗口，先激活再点
@@ -617,12 +618,71 @@ namespace QaTunnel
                 // 先移动真实光标，让菜单高亮/围观一致
                 MoveTo(x, y);
                 Thread.Sleep(60);
-                PostMessage(under, 0x0200 /*WM_MOUSEMOVE*/, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
-                Thread.Sleep(30);
-                PostMessage(under, 0x0201 /*WM_LBUTTONDOWN*/, (IntPtr)1, MakeLParam(cp.X, cp.Y));
+                // 关键：用 SendMessage（同步派发）。PostMessage 的异步消息 GTK 菜单不认。
+                SendMessage(under, 0x0200 /*WM_MOUSEMOVE*/, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
                 Thread.Sleep(40);
-                PostMessage(under, 0x0202 /*WM_LBUTTONUP*/, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                SendMessage(under, 0x0201 /*WM_LBUTTONDOWN*/, (IntPtr)1, MakeLParam(cp.X, cp.Y));
+                Thread.Sleep(60);
+                SendMessage(under, 0x0202 /*WM_LBUTTONUP*/, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
                 return true;
+            }
+            catch { return false; }
+        }
+
+        // 多种弹窗点击策略：GTK 菜单对注入输入的处理很挑剔，逐种尝试
+        private static bool PopupMenuClickStrategy(string strategy, int x, int y)
+        {
+            try
+            {
+                var pt = new POINT { X = x, Y = y };
+                IntPtr under = WindowFromPoint(pt);
+                if (under == IntPtr.Zero) return false;
+                IntPtr root = GetAncestor(under, 2);
+                if (root != under) return false;
+                const int GWL_STYLE = -16;
+                int style = GetWindowLong(under, GWL_STYLE);
+                if ((style & unchecked((int)0x80000000)) == 0) return false; // 非 WS_POPUP
+                IntPtr fg = GetForegroundWindow();
+                uint pidUnder = 0, pidFg = 0;
+                GetWindowPid(under, out pidUnder);
+                GetWindowPid(fg, out pidFg);
+                if (pidUnder == 0 || pidUnder != pidFg) return false;
+                var cp = new POINT { X = x, Y = y };
+                if (!ScreenToClient(under, ref cp)) return false;
+                MoveTo(x, y);
+                Thread.Sleep(120);
+                if (strategy == "send")
+                {
+                    SendMessage(under, 0x0200, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                    Thread.Sleep(60);
+                    SendMessage(under, 0x0201, (IntPtr)1, MakeLParam(cp.X, cp.Y));
+                    Thread.Sleep(80);
+                    SendMessage(under, 0x0202, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                    return true;
+                }
+                if (strategy == "owner")
+                {
+                    IntPtr owner = GetWindow(under, 4);
+                    if (owner == IntPtr.Zero) return false;
+                    var oc = new POINT { X = x, Y = y };
+                    if (!ScreenToClient(owner, ref oc)) return false;
+                    SendMessage(owner, 0x0200, IntPtr.Zero, MakeLParam(oc.X, oc.Y));
+                    Thread.Sleep(60);
+                    SendMessage(owner, 0x0201, (IntPtr)1, MakeLParam(oc.X, oc.Y));
+                    Thread.Sleep(80);
+                    SendMessage(owner, 0x0202, IntPtr.Zero, MakeLParam(oc.X, oc.Y));
+                    return true;
+                }
+                if (strategy == "post")
+                {
+                    PostMessage(under, 0x0200, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                    Thread.Sleep(60);
+                    PostMessage(under, 0x0201, (IntPtr)1, MakeLParam(cp.X, cp.Y));
+                    Thread.Sleep(80);
+                    PostMessage(under, 0x0202, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                    return true;
+                }
+                return false;
             }
             catch { return false; }
         }
@@ -867,6 +927,7 @@ namespace QaTunnel
         [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")] private static extern uint GetWindowPid(IntPtr hWnd, out uint pid);
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
         [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int index);
         [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr hWnd, ref POINT pt);
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
