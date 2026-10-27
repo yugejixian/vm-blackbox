@@ -129,6 +129,13 @@ export function apply(ctx, config) {
         },
         additionalProperties: true,
       },
+      render(_args, value) {
+        if (value && value.error) return [{ type: 'text', text: `vm_ui unavailable: ${value.error}` }]
+        const els = Array.isArray(value?.elements) ? value.elements : []
+        const head = `foreground window "${value?.window ?? ''}" - ${value?.count ?? els.length} element(s)`
+        const lines = els.slice(0, 60).map((e) => `- ${e.type} "${e.name ?? ''}" @ ${Math.round(e.cx)},${Math.round(e.cy)}`)
+        return [{ type: 'text', text: [head, ...lines].join('\n') }]
+      },
     },
     async execute(args) {
       if (strictPixelOnly) {
@@ -168,6 +175,9 @@ export function apply(ctx, config) {
         },
         additionalProperties: true,
       },
+      render(_args, value) {
+        return [{ type: 'text', text: JSON.stringify(value) }]
+      },
     },
     async execute(args) {
       const action = String(args?.action || 'list')
@@ -203,6 +213,10 @@ export function apply(ctx, config) {
         },
         additionalProperties: true,
       },
+      render(_args, value) {
+        const verb = value && value.ok === false ? 'upload failed' : 'uploaded'
+        return [{ type: 'text', text: `${verb}: ${value?.src ?? ''} -> ${value?.dst ?? ''}${value?.error ? ' (' + value.error + ')' : ''}` }]
+      },
     },
     async execute(args) {
       const localPath = String(args?.localPath || '')
@@ -237,6 +251,10 @@ export function apply(ctx, config) {
           dst: { type: 'string' },
         },
         additionalProperties: true,
+      },
+      render(_args, value) {
+        const verb = value && value.ok === false ? 'download failed' : 'downloaded'
+        return [{ type: 'text', text: `${verb}: ${value?.src ?? ''} -> ${value?.dst ?? ''}${value?.error ? ' (' + value.error + ')' : ''}` }]
       },
     },
     async execute(args) {
