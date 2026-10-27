@@ -16,6 +16,10 @@
 - **`strictPixelOnly` 配置**：严格像素模式（只允许截图 + 键鼠，禁用 `vm_ui` 与前台窗口标题），满足最纯粹的「傻子测试员」黑盒前提；默认关闭（辅助定位模式）。
 
 ### Fixed
+- **GTK 弹出菜单鼠标点击已支持**：检测到 gdkWindowTemp / WS_POPUP 弹窗时改用 SendMessage 同步派发鼠标消息
+  （此前 PostMessage / SendInput 会被菜单当成点击外部，菜单项不触发）。实测 Geany 文件菜单 3/3 生效，另存为对话框正常弹出。
+- /click 新增 strategy 调试参数（normal/post/send/owner）。
+
 - 隧道自动探测运行中的虚拟机（未设置 QA_VM_NAME 时不再指向过期 VM，修复 vm_upload/vm_download/vm_snapshot 的 `VBoxManage exit 1`）。
 - `vm_type` 长文本/多行自动走 POST（解决大段中文输入的 HTTP 000）。
 - 截图点击标记 3 秒后自动淡出（取证截图更干净）。

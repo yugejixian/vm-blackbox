@@ -174,22 +174,20 @@ powershell -ExecutionPolicy Bypass -File scripts\disguise-vm.ps1 -VmName "<虚�
 > 说明：这只是把硬件标识换成常见值，方便测试兼容性/检测行为；请只用于你自己的环境，不要用它规避你不被允许运行的软件的限制。
 > 伪装后**不要卸载 Guest Additions**，否则 dsh-vm-tester 的隧道会断。
 
-## 已知限制：GTK 应用的弹出菜单建议用键盘
+## GTK 应用（Geany/GIMP 等）的弹出菜单：已支持鼠标点击
 
-实测（Geany 1.38 / GTK3）：
+GTK3 的弹出菜单是独立顶层窗口（class gdkWindowTemp、WS_POPUP、owner=主窗口）。
+注入式**异步**鼠标消息（PostMessage / SendInput）会被菜单当成「点了外面」而关闭，菜单项不触发。
 
-- 鼠标点菜单栏（如「文件」）可以正常展开菜单；
-- 但鼠标点**展开后的菜单项**，菜单会被当作「点了外面」关闭，动作不触发——
-  这是 GTK 弹出菜单的鼠标抓取（grab）与注入式输入（SendInput / PostMessage）的兼容问题，
-  代理侧已做两种尝试（不抢焦点、向弹窗直接投递鼠标消息），**仍不稳定**。
+代理现在的做法：检测到这种弹窗时，用 **SendMessage 同步派发** WM_MOUSEMOVE / WM_LBUTTONDOWN / WM_LBUTTONUP，
+菜单项可以正常激活。实测（Geany 1.38）：
 
-建议：菜单操作一律用**键盘**：
+- 文件 → 退出：连续 3 次全部成功关闭程序；
+- 文件 → 另存为：正常弹出「保存文件」对话框；
+- 通过插件 vm_click 默认策略即可，无需额外参数。
 
-```
-vm_click 点菜单栏（或 vm_key 发 "alt+f"），然后用方向键移动高亮，回车确认
-```
+调试参数：/click?...&strategy=normal|post|send|owner（默认 auto=send，失败可逐种排查）。
 
-非 GTK 应用（WPF/UWP/经典 Win32 菜单）用鼠标点击菜单项正常。
 
 ## 故障排查：画面冻结 / 输入失效
 
