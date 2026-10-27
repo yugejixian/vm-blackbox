@@ -19,6 +19,8 @@ const AGENT_DIR = process.env.QA_AGENT_DIR || __dirname;
 // vault-get.ps1 可能在 agent/（自包含包）或 ../scripts/（仓库布局）——两处都找
 const vaultScriptCandidates = [path.join(AGENT_DIR, 'vault-get.ps1'), path.join(AGENT_DIR, '..', 'scripts', 'vault-get.ps1')];
 const VAULT_GET = vaultScriptCandidates.find((f) => { try { return fs.existsSync(f); } catch (e) { return false; } }) || vaultScriptCandidates[0];
+const GUEST_USER = process.env.QA_GUEST_USER || 'qa';
+const GUEST_PASS = process.env.QA_GUEST_PASS || 'Passw0rd!';
 const PS = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 const VBOX = process.env.QA_VBOXMANAGE || 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
@@ -132,6 +134,10 @@ let hostProbeBlockedUntil = 0; // 探测失败后的退避期
 const sha1 = (b) => crypto.createHash('sha1').update(b).digest('hex');
 
 // 跑一条命令并拿到 stdout（凭据解密用；绝不打日志）
+function runText(cmd, args, timeoutMs) {
+  return run(cmd, args, timeoutMs).then((b) => b.toString("utf8"));
+}
+
 function runCapture(cmd, args, timeoutMs) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { windowsHide: true });
@@ -187,6 +193,55 @@ async function currentMaskTokens() {
 }
 
 // 截图失败回退：直接用宿主 framebuffer（无视安全桌面/overlay 崩溃）
+// ---- 通用环境管理：快照 / 文件传输 ----
+async function vmState() {
+  const out = (await runCapture(VBOX, ["showvminfo", VM, "--machinereadable"], 15000)).toString("utf8");
+  const m = /VMState="([^"]+)"/.exec(out);
+  return m ? m[1] : "unknown";
+}
+
+async function snapshotAction(action, name) {
+  if (action === "list") {
+    const out = (await runCapture(VBOX, ["snapshot", VM, "list", "--machinereadable"], 15000)).toString("utf8");
+    const snapshots = [];
+    let cur = null;
+    for (const line of out.split(/\r?\n/)) {
+      let m = /^SnapshotName(?:-\d+)?="(.*)"/.exec(line);
+      if (m) { snapshots.push(m[1]); continue; }
+      m = /^CurrentSnapshotName="(.*)"/.exec(line);
+      if (m) cur = m[1];
+    }
+    return { snapshots, current: cur, state: await vmState() };
+  }
+  if (!name) throw new Error("snapshot name required");
+  if (action === "take") {
+    await run(VBOX, ["snapshot", VM, "take", name], 120000);
+    return { taken: name };
+  }
+  if (action === "restore") {
+    let st = await vmState();
+    if (st !== "poweroff") {
+      try { await run(VBOX, ["controlvm", VM, "acpipowerbutton"], 10000); } catch (e) { }
+      for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 2000)); st = await vmState(); if (st === "poweroff") break; }
+      if (st !== "poweroff") { try { await run(VBOX, ["controlvm", VM, "poweroff"], 10000); } catch (e) { } await new Promise((r) => setTimeout(r, 3000)); }
+    }
+    st = await vmState();
+    if (st !== "poweroff") throw new Error("cannot power off VM before restore: " + st);
+    await run(VBOX, ["snapshot", VM, "restore", name], 120000);
+    await run(VBOX, ["startvm", VM, "--type", "headless"], 30000);
+    return { restored: name, started: true };
+  }
+  throw new Error("unknown snapshot action: " + action);
+}
+
+async function transferFile(dir, src, dst, recursive) {
+  const args = ["guestcontrol", VM, dir, "--username", GUEST_USER, "--password", GUEST_PASS];
+  if (recursive) args.push("--recursive");
+  args.push(src, dst);
+  await run(VBOX, args, 300000);
+  return { ok: true, dir, src, dst, recursive: !!recursive };
+}
+
 async function fallbackHostShot(quality) {
   const stamp = Date.now() + "-" + (shotSeq++);
   const raw = path.join(SHOTS, "fb-" + stamp + ".png");
@@ -253,6 +308,38 @@ http.createServer(async (req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ connected: !!sock, pending: pending.size }));
         return;
+      case '/snapshot': {
+        try {
+          const action = (u.searchParams.get('action') || 'list').toLowerCase();
+          const name = u.searchParams.get('name') || '';
+          const r = await snapshotAction(action, name);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(r));
+        } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
+        return;
+      }
+      case '/push': {
+        try {
+          const src = u.searchParams.get('src');
+          const dst = u.searchParams.get('dst');
+          const recursive = u.searchParams.get('recursive') === '1';
+          const r = await transferFile('copyto', src, dst, recursive);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(r));
+        } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
+        return;
+      }
+      case '/pull': {
+        try {
+          const src = u.searchParams.get('src');
+          const dst = u.searchParams.get('dst');
+          const recursive = u.searchParams.get('recursive') === '1';
+          const r = await transferFile('copyfrom', src, dst, recursive);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(r));
+        } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
+        return;
+      }
       case '/ui': {
         try {
           const depth = parseInt(u.searchParams.get('depth') || '5', 10);

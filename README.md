@@ -43,6 +43,34 @@ vm_click({ x: 90, y: 376 })       // 点中 "7"
 - 只覆盖**前台窗口**；要操作别的窗口先点击/`Alt+Tab` 让它到前台。
 - 拿到坐标后窗口若移动，需要重新取树。
 
+## 通用测试工作流（任意软件，不限象棋）
+
+```jsonc
+// 1) 查看环境基准
+vm_snapshot({ action: "list" })        // { snapshots:["base-clean","base-disguised"], current:"base-disguised" }
+
+// 2) 重置到想要的基准（干净 VM / 已伪装 VM）
+vm_snapshot({ action: "restore", name: "base-clean" })
+
+// 3) 投递被测软件（压缩包或目录都行）
+vm_upload({ localPath: "D:\\assets\\app.zip", guestPath: "C:\\Users\\qa\\Desktop\\app.zip" })
+vm_upload({ localPath: "D:\\assets\\suite", guestPath: "C:\\Users\\qa\\Desktop\\suite", recursive: true })
+
+// 4) 用截图/键鼠（或 vm_ui）操作、判定
+vm_screenshot(); vm_click({x,y}); vm_key({combo:"enter"})
+
+// 5) 取回证据
+vm_download({ guestPath: "C:\\Users\\qa\\AppData\\Local\\Temp\\app.log", localPath: "D:\\evidence\\app.log" })
+
+// 6) 下一个测试前再重置
+vm_snapshot({ action: "restore", name: "base-disguised" })
+```
+
+要点：
+- 两个基准快照**保持为空**（不装任何特定软件），软件靠 `vm_upload` 临时投递，测完回滚即消失。
+- 需要测试「反 VM 检测」类软件时用 `base-disguised`；普通功能测试用 `base-clean`。
+- `restore` 大约需要 2–3 分钟（关机 + 恢复 + 开机 + 代理重连）。
+
 ## 新会话开场：一条命令就绪
 
 新会话不需要重复部署。先调用 `vm_status`；如果 `connected=false`：
@@ -204,13 +232,16 @@ vm_key("alt+f4")  ->  refused: Alt+F4 on the desktop/taskbar would open the shut
 手动清理：`powershell -ExecutionPolicy Bypass -File scripts/clean-shots.ps1`
 安全约束：只删严格命名的自有文件、只处理目录顶层、拒绝系统/用户根目录、非默认目录需显式 `-AllowCustomDir`。
 
-## 九个工具
+## 十二个工具
 
 | 工具 | 作用 |
 |---|---|
 | `vm_status` | 隧道是否连通、分辨率、当前登录用户 |
 | `vm_screenshot` | 截当前屏幕；图上带**坐标标尺**（每 200px 标注原生像素）和上次点击的准星 |
 | `vm_ui` | **UI 元素树**（前台窗口）：类型/名称/ID/矩形/中心点，按名字精确点，不用肉眼估坐标 |
+| `vm_snapshot` | **环境基准管理**：list / take / restore。restore 会关机→恢复快照→开机，用于每次测试前重置环境 |
+| `vm_upload` | 把宿主上的**文件/文件夹送进虚拟机**（投递被测软件、测试数据、脚本） |
+| `vm_download` | 把访客里的**证据取回宿主**（日志、崩溃转储、输出文件） |
 | `vm_click(x,y)` | 左键点击（原生像素坐标） |
 | `vm_type(text)` | 往当前焦点输入文本（支持中文，Unicode 注入） |
 | `vm_type_secret(name)` | 从宿主凭据库注入密码/令牌，**明文不进模型上下文**；注入后相关区域自动遮蔽 |

@@ -142,6 +142,114 @@ export function apply(ctx, config) {
   }))
 
   ctx.effect(() => ctx.tools.register({
+    name: 'vm_snapshot',
+    description:
+      'Manage VM snapshots — the test-environment baselines. action=list shows {snapshots,current,state}; action=take creates one; ' +
+      'action=restore powers the VM off, restores the named snapshot and boots it headless, so each test can start from a clean baseline. ' +
+      'Typical baseline names: base-clean (plain VM) and base-disguised (hardware identifiers spoofed).',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'take', 'restore'] },
+        name: { type: 'string', description: 'snapshot name (required for take/restore)' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          snapshots: { type: 'array', items: { type: 'string' } },
+          current: { type: 'string' },
+          taken: { type: 'string' },
+          restored: { type: 'string' },
+          state: { type: 'string' },
+        },
+        additionalProperties: true,
+      },
+    },
+    async execute(args) {
+      const action = String(args?.action || 'list')
+      const name = args?.name ? String(args.name) : ''
+      return requestJson(`/snapshot?action=${encodeURIComponent(action)}&name=${encodeURIComponent(name)}`)
+    },
+    isConcurrencySafe: () => false,
+  }))
+
+  ctx.effect(() => ctx.tools.register({
+    name: 'vm_upload',
+    description:
+      'Copy a file or folder from the HOST into the guest VM (VirtualBox guest control). Use it to deliver software under test, test data or helper scripts. ' +
+      'Set recursive=true to copy a folder tree. After uploading, launch it with the normal GUI tools (or run it if it is a script).',
+    parameters: {
+      type: 'object',
+      properties: {
+        localPath: { type: 'string', description: 'host path, e.g. D:\\assets\\app.zip' },
+        guestPath: { type: 'string', description: 'guest path, e.g. C:\\Users\\qa\\Desktop\\app.zip' },
+        recursive: { type: 'boolean', description: 'copy a folder recursively' },
+      },
+      required: ['localPath', 'guestPath'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+          src: { type: 'string' },
+          dst: { type: 'string' },
+          recursive: { type: 'boolean' },
+        },
+        additionalProperties: true,
+      },
+    },
+    async execute(args) {
+      const localPath = String(args?.localPath || '')
+      const guestPath = String(args?.guestPath || '')
+      const recursive = Boolean(args?.recursive)
+      const q = new URLSearchParams({ src: localPath, dst: guestPath, recursive: recursive ? '1' : '0' })
+      return requestJson(`/push?${q.toString()}`)
+    },
+    isConcurrencySafe: () => false,
+  }))
+
+  ctx.effect(() => ctx.tools.register({
+    name: 'vm_download',
+    description:
+      'Copy a file or folder from the guest VM back to the HOST (VirtualBox guest control). Use it to collect evidence: logs, crash dumps, output files. Set recursive=true for folders.',
+    parameters: {
+      type: 'object',
+      properties: {
+        guestPath: { type: 'string', description: 'guest path to copy from' },
+        localPath: { type: 'string', description: 'host path to copy to' },
+        recursive: { type: 'boolean', description: 'copy a folder recursively' },
+      },
+      required: ['guestPath', 'localPath'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+          src: { type: 'string' },
+          dst: { type: 'string' },
+        },
+        additionalProperties: true,
+      },
+    },
+    async execute(args) {
+      const guestPath = String(args?.guestPath || '')
+      const localPath = String(args?.localPath || '')
+      const recursive = Boolean(args?.recursive)
+      const q = new URLSearchParams({ src: guestPath, dst: localPath, recursive: recursive ? '1' : '0' })
+      return requestJson(`/pull?${q.toString()}`)
+    },
+    isConcurrencySafe: () => false,
+  }))
+
+  ctx.effect(() => ctx.tools.register({
     name: 'vm_screenshot',
     description:
       'Capture what the guest screen shows right now and return it as an image plus the saved file path. ' +
