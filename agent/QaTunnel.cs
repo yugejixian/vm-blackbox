@@ -98,7 +98,7 @@ namespace QaTunnel
                             switch (op)
                             {
                                 case "CURSOR": { POINT cp; if (GetCursorPos(out cp)) SendOk(ns, id, "{\"x\":" + cp.X + ",\"y\":" + cp.Y + "}"); else SendErr(ns, id, "cursor failed"); break; }
-                                case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\",\"fg\":\"" + FgTitle() + "\",\"ptr\":\"" + (PtrOk() ? "ok" : "dead") + "\"}"); break;
+                                case "INFO": SendOk(ns, id, "{\"w\":" + W() + ",\"h\":" + H() + ",\"user\":\"" + Environment.UserName + "\",\"fg\":\"" + FgTitle() + "\",\"ptr\":\"" + (PtrOk() ? "ok" : "dead") + "\",\"ptrReason\":\"" + PtrReason() + "\"}"); break;
                                   case "UITREE":
                                       {
                                           int maxDepth = parts.Length > 2 ? int.Parse(parts[2]) : 5;
@@ -178,11 +178,15 @@ namespace QaTunnel
                                             SendErr(ns, id, "pointer does not move: guest desktop session looks hung (cursor stuck at " + cp.X + "," + cp.Y + "). Reboot the VM and retry.");
                                             break;
                                         }
-                EnsureForegroundAt(x, y); // 非前台窗口的第一下点击只会激活窗口，先激活再点
-                Click(dbl);
+                bool popupMode = PopupMenuClick(x, y);
+                if (!popupMode)
+                {
+                    EnsureForegroundAt(x, y); // 非前台窗口的第一下点击只会激活窗口，先激活再点
+                    Click(dbl);
+                }
                                         _lastClickX = x; _lastClickY = y;
                                         _lastClickTick = Environment.TickCount;
-                                        SendOk(ns, id, "{}");
+                                        SendOk(ns, id, popupMode ? "{\"mode\":\"popup\"}" : "{\"mode\":\"normal\"}");
                                         break;
                                     }
                                 case "TYPE":
@@ -359,6 +363,23 @@ namespace QaTunnel
         }
 
         // 指针设备健康检查：桌面会话卡死时 SetCursorPos 会失败，此时点击/输入都不可靠
+        [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+        [DllImport("user32.dll")] private static extern bool CloseDesktop(IntPtr hDesktop);
+
+        // 指针不可用时给出原因：secure_desktop(UAC/锁屏) / no_desktop / ok
+        private static string PtrReason()
+        {
+            try
+            {
+                if (PtrOk()) return "ok";
+                IntPtr h = OpenInputDesktop(0, false, 0x0100); // DESKTOP_READOBJECTS
+                if (h == IntPtr.Zero) return "secure_desktop";
+                CloseDesktop(h);
+                return "no_cursor";
+            }
+            catch { return "unknown"; }
+        }
+
         private static bool PtrOk()
         {
             try
@@ -561,6 +582,45 @@ namespace QaTunnel
             SendMouse(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, nx, ny, 0);
         }
 
+        private static IntPtr MakeLParam(int lo, int hi)
+        {
+            return (IntPtr)((hi << 16) | (lo & 0xFFFF));
+        }
+
+        // 弹出菜单（GTK 菜单等）是独立顶层窗口：SendInput 的按键事件会被它的 grab 吞掉/误判为“点外面”。
+        // 检测到这种弹窗时，直接把鼠标消息 Post 到该弹窗。
+        private static bool PopupMenuClick(int x, int y)
+        {
+            try
+            {
+                var pt = new POINT { X = x, Y = y };
+                IntPtr under = WindowFromPoint(pt);
+                if (under == IntPtr.Zero) return false;
+                IntPtr root = GetAncestor(under, 2);
+                if (root != under) return false; // 不是顶层弹窗
+                const int GWL_STYLE = -16;
+                int style = GetWindowLong(under, GWL_STYLE);
+                if ((style & unchecked((int)0x80000000)) == 0) return false; // WS_POPUP
+                IntPtr fg = GetForegroundWindow();
+                uint pidUnder = 0, pidFg = 0;
+                GetWindowPid(under, out pidUnder);
+                GetWindowPid(fg, out pidFg);
+                if (pidUnder == 0 || pidUnder != pidFg) return false;
+                var cp = new POINT { X = x, Y = y };
+                if (!ScreenToClient(under, ref cp)) return false;
+                // 先移动真实光标，让菜单高亮/围观一致
+                MoveTo(x, y);
+                Thread.Sleep(60);
+                PostMessage(under, 0x0200 /*WM_MOUSEMOVE*/, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                Thread.Sleep(30);
+                PostMessage(under, 0x0201 /*WM_LBUTTONDOWN*/, (IntPtr)1, MakeLParam(cp.X, cp.Y));
+                Thread.Sleep(40);
+                PostMessage(under, 0x0202 /*WM_LBUTTONUP*/, IntPtr.Zero, MakeLParam(cp.X, cp.Y));
+                return true;
+            }
+            catch { return false; }
+        }
+
         private static void EnsureForegroundAt(int x, int y)
         {
             try
@@ -570,8 +630,19 @@ namespace QaTunnel
                 if (h == IntPtr.Zero) return;
                 IntPtr root = GetAncestor(h, 2 /* GA_ROOT */);
                 if (root == IntPtr.Zero) root = h;
-                if (root == GetForegroundWindow()) return; // 已是前台，直接点
-                SetForegroundWindow(root);
+                // 弹出菜单/工具提示是独立的顶层窗口（GTK 菜单尤其如此）：
+                // 对它调 SetForegroundWindow 会直接关闭菜单，随后的点击就"穿透"到下面的窗口。
+                // 所以：如果是弹出窗口，先取它的宿主窗口；宿主已是前台时什么也不做。
+                IntPtr owner = GetWindow(root, 4 /* GW_OWNER */);
+                IntPtr target = owner != IntPtr.Zero ? owner : root;
+                IntPtr fg = GetForegroundWindow();
+                if (target == fg) return;
+                // 同一个进程的窗口（菜单/对话框）同样不抢焦点，保持菜单打开
+                uint pidTarget = 0, pidFg = 0;
+                GetWindowPid(target, out pidTarget);
+                GetWindowPid(fg, out pidFg);
+                if (pidTarget != 0 && pidTarget == pidFg) return;
+                SetForegroundWindow(target);
                 Thread.Sleep(150);
             }
             catch { }
@@ -787,6 +858,11 @@ namespace QaTunnel
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+        [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")] private static extern uint GetWindowPid(IntPtr hWnd, out uint pid);
+        [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+        [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int index);
+        [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr hWnd, ref POINT pt);
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
         [DllImport("imm32.dll")] private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);
 

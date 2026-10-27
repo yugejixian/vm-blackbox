@@ -514,14 +514,14 @@ http.createServer(async (req, res) => {
         try {
           const x = parseInt(u.searchParams.get('x'), 10);
           const y = parseInt(u.searchParams.get('y'), 10);
-          await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
+          const clickResult = await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
           if (Number.isFinite(x) && Number.isFinite(y)) lastClick = { x, y };
           res.setHeader('Content-Type', 'application/json');
-          res.end('{"ok":true}');
+          res.end(clickResult && String(clickResult).trim().startsWith('{') ? clickResult : '{"ok":true}');
         } catch (e) { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: String(e.message) })); }
         return;
       }
-      case '/type-secret': {
+            case '/type-secret': {
         const name = u.searchParams.get('name') || '';
         if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name)) { res.statusCode = 400; res.end('{"ok":false,"err":"bad name"}'); return; }
         let secret = '';

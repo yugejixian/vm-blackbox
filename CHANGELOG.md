@@ -16,6 +16,9 @@
 - **`strictPixelOnly` 配置**：严格像素模式（只允许截图 + 键鼠，禁用 `vm_ui` 与前台窗口标题），满足最纯粹的「傻子测试员」黑盒前提；默认关闭（辅助定位模式）。
 
 ### Fixed
+- `vm_click`：不再抢走同一进程弹出菜单的焦点（避免焦点切换把菜单关掉）；新增弹窗直投尝试与 `mode` 回报；GTK 弹出菜单项仍需键盘操作（README 已注明）。
+- `/click` 现在透传代理返回内容（便于诊断）。
+
 - **新 VM 连不上**：自动检测并修复 VirtualBox NAT 的 `localhostReachable`（新虚拟机默认关闭，导致访客够不到宿主 10.0.2.2:8801）。
 
 - **桌面会话卡死检测**：`vm_status.pointerOk` + `vm_click` 会明确报 "pointer does not move"，不再静默点空；README 给出重启恢复步骤。
