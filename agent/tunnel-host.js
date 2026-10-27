@@ -544,7 +544,8 @@ http.createServer(async (req, res) => {
         try {
           const x = parseInt(u.searchParams.get('x'), 10);
           const y = parseInt(u.searchParams.get('y'), 10);
-          const clickResult = await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0']);
+          const clickStrategy = u.searchParams.get('strategy') || 'auto';
+          const clickResult = await call('CLICK', [String(x), String(y), u.searchParams.get('dbl') ? '1' : '0', clickStrategy]);
           if (Number.isFinite(x) && Number.isFinite(y)) { lastClick = { x, y }; if (lastClickTimer) clearTimeout(lastClickTimer); lastClickTimer = setTimeout(() => { lastClick = null; }, 3000); if (lastClickTimer.unref) lastClickTimer.unref(); }
           res.setHeader('Content-Type', 'application/json');
           res.end(clickResult && String(clickResult).trim().startsWith('{') ? clickResult : '{"ok":true}');
