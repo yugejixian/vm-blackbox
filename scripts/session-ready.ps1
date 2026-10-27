@@ -52,8 +52,11 @@ if ($already) {
   $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$setup`"",
     '-VmName', "`"$VmName`"", '-GuestUser', "`"$GuestUser`"", '-GuestPass', "`"$GuestPass`"")
   if ($NoViewer) { $args += '-NoViewer' }
-  $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -NoNewWindow -Wait -PassThru
-  if ($p.ExitCode -ne 0) { throw "部署脚本返回失败（退出码 $($p.ExitCode)）" }
+  # 分离执行部署脚本，避免常驻的隧道子进程让 -Wait 永不返回
+  $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -WindowStyle Hidden -PassThru
+  $p.WaitForExit(600000) | Out-Null
+  if ($p.HasExited -and $p.ExitCode -ne 0) { throw "部署脚本返回失败（退出码 $($p.ExitCode)）" }
+  if (-not $p.HasExited) { throw '部署脚本超时（10 分钟）' }
 }
 
 # 真实回环校验：必须拿到 /info 才算真的就绪

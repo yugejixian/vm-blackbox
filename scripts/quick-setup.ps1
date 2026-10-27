@@ -211,7 +211,10 @@ if ($tunnelUp) {
   $env:QA_VM_NAME = $VmName
   $tunnelJs = Join-Path $agentDir 'tunnel-host.js'
   # PowerShell 5.1 不会给参数加引号，含空格/中文的路径必须显式加
-  Start-Process -FilePath $node -ArgumentList @("`"$tunnelJs`"") -WindowStyle Hidden
+  # 用 WMI 分离启动隧道：脱离当前进程树，避免调用方（DSH 工具/父脚本）被常驻子进程卡住
+  $envPrefix = 'set "QA_VM_NAME=' + $VmName + '" && set "QA_SHOTS_DIR=' + $ShotsDir + '" && '
+  $cmdLine = 'cmd /c "' + $envPrefix + '"' + $node + '" "' + $tunnelJs + '""'
+  $null = ([wmiclass]'Win32_Process').Create($cmdLine)
   Write-Ok '隧道已在后台启动'
 }
 
