@@ -215,25 +215,50 @@ if ($tunnelUp) {
   Write-Ok '隧道已在后台启动'
 }
 
-# ---------- 6. 等待连通 ----------
-Write-Step '等待隧道连接（最多 90 秒）'
+# ---------- 6. 等待连通（失败自动修复一次） ----------
+function Wait-Connected([int]$Seconds) {
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 3
+    try {
+      $r = Invoke-RestMethod -Uri 'http://127.0.0.1:8890/status' -TimeoutSec 3
+      if ($r.connected) { return $true }
+    } catch { }
+  }
+  return $false
+}
+
+Write-Step '等待隧道连接'
+# 已经连通就立刻继续（热环境 0 等待）
 $connected = $false
-for ($i = 1; $i -le 30; $i++) {
-  Start-Sleep -Seconds 3
+try {
+  $r0 = Invoke-RestMethod -Uri 'http://127.0.0.1:8890/status' -TimeoutSec 3
+  if ($r0.connected) { $connected = $true }
+} catch { }
+if (-not $connected) { $connected = Wait-Connected 20 }
+if (-not $connected) {
+  Write-Step '连接失败：自动重启访客代理 + 宿主隧道（一次）'
+  $null = Invoke-Guest 'C:\Windows\System32\schtasks.exe' @('/End', '/TN', 'QaTunnel')
+  $null = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'taskkill /f /im QaTunnel.exe')
+  Start-Sleep -Seconds 2
+  $null = Invoke-Guest 'C:\Windows\System32\cmd.exe' @('/c', 'start "" C:\qa\QaTunnel.exe')
   try {
-    $r = Invoke-RestMethod -Uri 'http://127.0.0.1:8890/status' -TimeoutSec 3
-    if ($r.connected) { $connected = $true; break }
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*tunnel-host*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
   } catch { }
+  Start-Sleep -Seconds 2
+  $repairTunnel = Join-Path $agentDir 'tunnel-host.js'
+  $env:QA_SHOTS_DIR = $ShotsDir
+  $env:QA_VM_NAME = $VmName
+  try { Start-Process -FilePath $node -ArgumentList @("`"$repairTunnel`"") -WindowStyle Hidden } catch { }
+  $connected = Wait-Connected 90
 }
 if (-not $connected) {
   Write-Host ''
   Fail @'
-90 秒内没有连上。按顺序检查：
-  1) 虚拟机是否已登录桌面（没登录时开机自启不会跑）
-  2) 访客里 C:\qa\QaTunnel.exe 是否在运行（任务管理器查 QaTunnel）
-  3) 虚拟机 NAT 网络是否正常（能上网即可）
-  4) 防火墙是否拦了出站（默认不拦）
-排查完重跑本脚本即可。
+连接失败（已尝试自动重启代理与隧道）。请检查：
+  1) 虚拟机是否已登录桌面（未登录时开机自启不会运行）
+  2) 虚拟机 NAT 是否允许访问宿主（脚本应已自动设置，见 README 故障排查）
+  3) 宿主防火墙是否拦截
 '@
 }
 Write-Ok '隧道已连接'

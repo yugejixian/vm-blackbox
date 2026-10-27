@@ -1,6 +1,9 @@
 ## 0.1.6
 
 ### Added
+- **`scripts/session-ready.ps1`**：新会话一条命令就绪（热环境 0.2 秒、冷启动 40–60 秒），并做真实回环校验。
+- `quick-setup.ps1`：连接失败会自动重启访客代理与隧道（实测约 9 秒恢复），不再干等。
+
 - **UAC 支持**：`scripts/uac-approve.ps1`（宿主侧注入键盘批准 UAC）、`scripts/uac-off.ps1`（访客内关闭 UAC）。
 - `/shot` 失败自动回退宿主 framebuffer（`X-Shot-Via: host-fallback`），UAC/安全桌面也能看到画面。
 - `vm_status` 新增 `ptrReason`（ok / secure_desktop / no_cursor），区分 UAC 与真实卡死。
