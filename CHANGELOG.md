@@ -1,4 +1,11 @@
-﻿## 0.1.7
+﻿## 0.1.8
+
+### Fixed
+
+- **package.json 的 BOM 导致插件市场安装全部失败**：0.1.7 的发布包里 `package.json` 带 UTF-8 BOM（EF BB BF），DSH 校验安装包时用裸 `JSON.parse` 读清单，遇到 BOM 直接抛 `Unexpected token` 并回滚整个安装。0.1.8 的清单改为纯 UTF-8 无 BOM。
+- 新增 `prepack` 防回归检查（`scripts/check-manifest.mjs`）：打包前校验清单无 BOM/UTF-16、可被裸 `JSON.parse` 解析、`dsh.bundle.patch` 存在、agent 二进制存在——再打不出带 BOM 的包。
+
+## 0.1.7
 
 ### Fixed
 
