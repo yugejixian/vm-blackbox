@@ -9,30 +9,29 @@
 
 | 方式 | 命令 | 说明 |
 |---|---|---|
-| **A. Release 包（推荐，不依赖 npm）** | 见下方分步 | 一个 86 KB 的 `.tgz`，包含插件 + 部署脚本 + 文档 |
-| **B. npm** | `dsh plugin add dsh-vm-tester` | 需要能访问 npm |
-| **C. GitHub 仓库** | `dsh plugin add github:yugejixian/vm-blackbox` | 需要能访问 GitHub |
+| **A. Release 包（推荐，不依赖 npm）** | 见下方分步 | 预构建 `.tgz`，包含插件 + 部署脚本 + 文档 |
+| **B. GitHub 仓库** | `dsh plugin add github:yugejixian/vm-blackbox` | 需要能访问 GitHub（会走源码构建） |
 
 ### A 方式分步
 
 1. 浏览器打开下载页（直接下载，无需登录）；**放在哪个盘、哪个目录都可以**，路径含空格或中文时记得加引号：
    <https://github.com/yugejixian/vm-blackbox/releases/latest>
-2. 下载最新 Release 里的 **`dsh-vm-tester-0.1.4.tgz`**（86 KB）；
+2. 下载最新 Release 里的 **`dsh-vm-blackbox-tester.tgz`**（文件名不带版本号）；
 3. 装进 DSH：
 
    ```sh
-   dsh plugin add C:\Users\你\Downloads\dsh-vm-tester-0.1.4.tgz
+   dsh plugin add C:\Users\你\Downloads\dsh-vm-blackbox-tester.tgz
    ```
 
 4. 完全退出 DSH 再打开（让插件加载）。
 
-### B / C 方式
+### B 方式
 
 ```sh
-dsh plugin add dsh-vm-tester
-# 或
 dsh plugin add github:yugejixian/vm-blackbox
 ```
+
+> 旧 npm 包 `dsh-vm-tester` 已停止维护（0.1.7 清单带 BOM，安装会被 DSH 拒绝），请改用 A 方式的 Release 包。
 
 装完同样**完全重启 DSH**。
 
@@ -57,7 +56,7 @@ dsh plugin add github:yugejixian/vm-blackbox
 先找到插件目录（任选其一）：
 
 - **用 A 方式装的**：解压那个 tgz 到一个文件夹，就得到插件目录；
-- **用 B/C 方式装的**：目录在 `C:\Users\你\.dsh\profiles\<profile>\node_modules\dsh-vm-tester`
+- **用 B/C 方式装的**：目录在 `C:\Users\你\.dsh\profiles\<profile>\node_modules\dsh-vm-blackbox-tester`
   （`<profile>` 一般是 `desktop` 或 `web`）。
 
 在这个目录里打开 PowerShell，执行（把三个参数换成你的）：
@@ -116,7 +115,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\quick-setup.ps1 `
 | 截图全黑 / 是旧画面 | VirtualBox 设置 → 显示 → 图形控制器改成 **VBoxSVGA** |
 | 点击位置总是偏 | 看截图上的**坐标标尺**读原生像素；窗口大小变了就重新截图 |
 | 中文打成「中中中中」 | 确认虚拟机装了 **Guest Additions**（设备 → 插入增强功能光盘） |
-| 提示缺 `agent\QaTunnel.exe` | 装的是旧 npm 版本；请用 A/C 方式（含 agent 目录） |
+| 提示缺 `agent\QaTunnel.exe` | 缺少 `agent/` 目录（旧包或安装方式不对）；请用 A/B 方式（含完整目录） |
 
 更详细的部署与排错：仓库里的 [`docs/QUICKSTART.md`](https://github.com/yugejixian/vm-blackbox/blob/main/docs/QUICKSTART.md)。
 

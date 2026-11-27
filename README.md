@@ -1,4 +1,4 @@
-# dsh-vm-tester — 在虚拟机里像人一样测软件
+# dsh-vm-blackbox-tester — 在虚拟机里像人一样测软件
 
 > 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的黑盒 GUI 测试插件：AI 测试员**只看屏幕、只点鼠标**，判定必须由像素支撑。
 >
@@ -13,7 +13,7 @@ AI 跑自动化测试最容易失效的地方不是"点不准"，而是**它能�
 ## 架构
 
 ```
-DSH 测试员 ──工具调用──▶ dsh-vm-tester ──HTTP :8890──▶ tunnel-host.js (宿主)
+DSH 测试员 ──工具调用──▶ dsh-vm-blackbox-tester ──HTTP :8890──▶ tunnel-host.js (宿主)
                                                               ▲
                                                               │ 反向隧道 :8801
                                                      QaTunnel.exe (虚拟机内)
@@ -172,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File scripts\disguise-vm.ps1 -VmName "<虚�
 设置需要**关机后开机**生效；开机后可在虚拟机里用 `systeminfo`、`wmic csproduct get vendor,model` 检查。
 
 > 说明：这只是把硬件标识换成常见值，方便测试兼容性/检测行为；请只用于你自己的环境，不要用它规避你不被允许运行的软件的限制。
-> 伪装后**不要卸载 Guest Additions**，否则 dsh-vm-tester 的隧道会断。
+> 伪装后**不要卸载 Guest Additions**，否则 dsh-vm-blackbox-tester 的隧道会断。
 
 ## GTK 应用（Geany/GIMP 等）的弹出菜单：已支持鼠标点击
 
@@ -280,20 +280,20 @@ vm_key("alt+f4")  ->  refused: Alt+F4 on the desktop/taskbar would open the shut
 ## 安装
 
 ```sh
-# 方式一：从 npm 安装（推荐）
-dsh plugin add dsh-vm-tester
+# 方式一（推荐）：直接从最新 GitHub Release 安装预构建包
+dsh plugin add https://github.com/yugejixian/vm-blackbox/releases/latest/download/dsh-vm-blackbox-tester.tgz
 
-# 方式二：从 Releases 页面下载 .tgz 后安装（不写死版本）
+# 方式二：先下载 .tgz 再本地安装
 #   下载页：https://github.com/yugejixian/vm-blackbox/releases
-dsh plugin add C:\path\to\dsh-vm-tester-x.y.z.tgz
+dsh plugin add C:\path\to\dsh-vm-blackbox-tester.tgz
 
-# 方式三：从本仓库安装
+# 方式三：从本仓库源码安装（需要构建，较慢）
 dsh plugin add github:yugejixian/vm-blackbox
 ```
 
 > **装完只是遥控器，还不能用**：虚拟机、访客代理、宿主隧道三者缺一不可。
-> 完整步骤见 [docs/QUICKSTART.md](docs/QUICKSTART.md)。若你的安装方式拿不到 `agent/` 目录（较早的 npm 版本），
-> 请改用 `dsh plugin add github:yugejixian/vm-blackbox`，它包含全部脚本。
+> 完整步骤见 [docs/QUICKSTART.md](docs/QUICKSTART.md)。旧的 npm 包 `dsh-vm-blackbox-tester` 已停止维护
+> （0.1.7 的清单编码带 BOM，DSH 会拒绝安装），请用上面的 Release 预构建包安装。
 
 > 如果你的 profile 里已经手工插入过同样 `id: vm-tester` 的 patch 行，**必须先删掉**，否则会重复加载同一插件导致启动失败。
 
@@ -311,7 +311,7 @@ dsh plugin add github:yugejixian/vm-blackbox
 
 ```yaml
 - id: vm-tester
-  name: 'dsh-vm-tester'
+  name: 'dsh-vm-blackbox-tester'
   config:
     tunnelUrl: 'http://127.0.0.1:8890'   # tunnel-host.js 的 HTTP 地址
     shotsDir: 'C:\Users\你\Pictures\vmshots'  # 截图落盘目录（留空则用默认值）
@@ -321,7 +321,7 @@ dsh plugin add github:yugejixian/vm-blackbox
 
 | 目录 | 内容 |
 |---|---|
-| 根目录 | npm 包本身：`index.js`、`package.json`、`cordis.patch.yml`、`locale/`、`icon.svg` |
+| 根目录 | 插件包本身（经 GitHub Release 分发）：`index.js`、`package.json`、`cordis.patch.yml`、`locale/`、`icon.svg` |
 | [`agent/`](agent) | 虚拟机内代理、宿主隧道、标定工具 |
 | [`scripts/`](scripts) | 建虚拟机、窗口/无窗口切换、运行体检、截图清理、桌面围观小窗 |
 | [`cases/`](cases) | 九条示例用例（记事本/计算器/安装/取消/卸载/游戏/资源管理器/浏览器/安全登录） |

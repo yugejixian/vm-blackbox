@@ -1,4 +1,16 @@
-﻿## 0.1.8
+﻿## 0.1.9
+
+### Changed
+
+- **包名变更为 `dsh-vm-blackbox-tester`**：暂缓 npm 发布，改为通过 GitHub Release 的预构建 tarball 分发（与插件市场条目一致）。
+- 安装命令统一指向 Release 下**不带版本号**的资产，并使用 `releases/latest/download/` 浮动链接，避免钉版本链接随发版失效。
+- README / docs 同步更新安装方式；插件运行时目录（截图、清理任务）保持原路径，兼容已有环境。
+
+### Fixed
+
+- 延续 0.1.8：`package.json` 无 BOM，`prepack` 守卫继续阻止带 BOM/UTF-16 的清单被打包。
+
+## 0.1.8
 
 ### Fixed
 

@@ -7,7 +7,7 @@
 - [x] `README.md`（装法、依赖、工具表、已知限制）
 - [x] `LICENSE`（MIT）
 - [x] `package.json` 里有 `license` / `keywords` / `description`
-- [ ] **改包名**：`@local/vm-tester` 不能上公开 npm，建议 `dsh-vm-tester` 或 `@<你的scope>/dsh-vm-tester`
+- [x] **包名**：`dsh-vm-blackbox-tester`（npm 发布已暂缓，当前通过 GitHub Release tarball 分发；如恢复 npm 发布需重新评估包名与版本）
 - [ ] **去掉 `"private": true`**（现在保留是为了防手滑误发）
 - [ ] 版本号按 semver 走（首发 `0.1.0` 可以）
 - [ ] （可选）`repository` / `homepage` / `bugs` 指向仓库

@@ -25,8 +25,8 @@
 在 DSH 里任选一种（推荐第一种）：
 
 ```sh
-# ① 从 npm 装（最稳）
-dsh plugin add dsh-vm-tester
+# ① 从最新 GitHub Release 装预构建包（推荐）
+dsh plugin add https://github.com/yugejixian/vm-blackbox/releases/latest/download/dsh-vm-blackbox-tester.tgz
 
 # ② 从 GitHub 仓库装（拿到的文件最全，含本指南与全部脚本）
 dsh plugin add github:yugejixian/vm-blackbox
@@ -35,7 +35,7 @@ dsh plugin add github:yugejixian/vm-blackbox
 装完**重启 DSH**（完全退出再打开）。
 
 ### 验证
-在 DSH 里问一句「列出你的 vm 工具」，应该能看到 8 个：`vm_status`、`vm_screenshot`、`vm_click`、`vm_type`、`vm_type_secret`、`vm_key`、`vm_key_basic`、`vm_wait`。
+在 DSH 里问一句「列出你的 vm 工具」，应该能看到 12 个：`vm_status`、`vm_ui`、`vm_snapshot`、`vm_upload`、`vm_download`、`vm_screenshot`、`vm_click`、`vm_type`、`vm_type_secret`、`vm_key`、`vm_key_basic`、`vm_wait`。
 
 此时直接调 `vm_status` 会报「隧道连不上」——**这是正常的**，因为虚拟机和隧道还没起步。继续往下。
 
@@ -48,7 +48,7 @@ dsh plugin add github:yugejixian/vm-blackbox
 脚本会：建虚拟机（EFI + vTPM + 4G 内存 / 2 核 / 64G 动态盘 + NAT）→ 无人值守装 Win11 中文专业版 → 装 Guest Additions → 投递访客代理 → 关 UAC → 打基线快照。
 
 ```powershell
-cd <插件目录>            # 例如 C:\Users\你\.dsh\profiles\desktop\node_modules\dsh-vm-tester
+cd <插件目录>            # 例如 C:\Users\你\.dsh\profiles\desktop\node_modules\dsh-vm-blackbox-tester
 powershell -ExecutionPolicy Bypass -File .\scripts\build-vm.ps1 -Iso "D:\你的win11.iso"
 ```
 
